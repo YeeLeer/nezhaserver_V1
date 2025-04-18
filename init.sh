@@ -108,8 +108,8 @@ server {
     # http2 on;
 
     server_name $ARGO_DOMAIN;
-    ssl_certificate          $WORK_DIR/nezha.pem;
-    ssl_certificate_key      $WORK_DIR/nezha.key;
+    ssl_certificate $WORK_DIR/nezha.pem;
+    ssl_certificate_key $WORK_DIR/nezha.key;
     ssl_session_timeout 1d;
     ssl_session_cache shared:SSL:10m;
     ssl_protocols TLSv1.2 TLSv1.3;
