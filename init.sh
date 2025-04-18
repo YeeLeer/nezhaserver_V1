@@ -100,10 +100,17 @@ EOF
       ;;
     "nginx" )
       GRPC_PROXY_RUN='nginx -g "daemon off;"'
+      rm /etc/nginx/sites-enabled/default
       cat > /etc/nginx/conf.d/default.conf << EOF
 server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
+    listen $WEB_PORT;
+    listen [::]:$WEB_PORT;
+    server_name $ARGO_DOMAIN;
+    return 301 https://$host$request_uri;
+}
+server {
+    listen $GRPC_PROXY_PORT ssl;
+    listen [::]:$GRPC_PROXY_PORT ssl;
     # http2 on;
 
     server_name $ARGO_DOMAIN;
@@ -136,7 +143,7 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
-        proxy_pass http://127.0.0.1:8008;
+        proxy_pass http://127.0.0.1:$GRPC_PORT;
     }
 
     location / {
@@ -148,12 +155,12 @@ server {
         proxy_buffers 4 256k;
         proxy_busy_buffers_size 256k;
         proxy_max_temp_file_size 0;
-        proxy_pass http://127.0.0.1:8008;
+        proxy_pass http://127.0.0.1:$GRPC_PORT;
     }
 }
 
 upstream dashboard {
-    server 127.0.0.1:8008;
+    server 127.0.0.1:$GRPC_PORT;
     keepalive 512;
 }
 EOF
