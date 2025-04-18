@@ -133,7 +133,6 @@ http {
     real_ip_header CF-Connecting-IP;
 
     location ^~ /proto.NezhaService/ {
-        grpc_pass grpc://127.0.0.1:8008;
         grpc_set_header Host \$host;
         grpc_set_header nz-realip \$http_CF_Connecting_IP;
         grpc_read_timeout 600s;
@@ -141,6 +140,7 @@ http {
         grpc_socket_keepalive on;
         client_max_body_size 10m;
         grpc_buffer_size 4m;
+        grpc_pass grpc://dashboard;
     }
 
     location ~* ^/api/v1/ws/(server|terminal|file)(.*)$ {
