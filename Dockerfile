@@ -15,7 +15,7 @@ RUN apt-get update &&\
     apt-get clean &&\
     rm -rf /var/lib/apt/lists/* &&\
     echo "#!/usr/bin/env bash\n\n\
-bash <(wget -qO- https://raw.githubusercontent.com/YeeLeer/docker_nezha_server_V1/refs/heads/main/init.sh)" > start.sh &&\
+bash <(wget -qO- https://raw.githubusercontent.com/YeeLeer/nezhaserver_V1/refs/heads/main/init.sh)" > start.sh &&\
     chmod +x start.sh
 
 ENTRYPOINT ["./start.sh"]
