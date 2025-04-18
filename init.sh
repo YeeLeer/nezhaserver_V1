@@ -103,7 +103,6 @@ EOF
       curl -sSL ${GH_PROXY}https://raw.githubusercontent.com/YeeLeer/nezhaserver_V1/refs/heads/main/main.conf -o /etc/nginx/conf.d/main.conf
       sed -i "s#\$ARGO_DOMAIN#$ARGO_DOMAIN#g" /etc/nginx/conf.d/main.conf
       GRPC_PROXY_RUN='nginx -g "daemon off;"'
-EOF
       ;;
   esac
 
