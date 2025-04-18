@@ -115,7 +115,6 @@ if [ -e $TEMP_DIR/backup.tar.gz ]; then
 
   # 复制临时文件到正式的工作文件夹
   cp -rf ${TEMP_DIR}/${FILE_PATH}data/* ${WORK_DIR}/data/
-  [ -d ${TEMP_DIR}/${FILE_PATH}resource ] && cp -rf ${TEMP_DIR}/${FILE_PATH}resource ${WORK_DIR}
   rm -rf ${TEMP_DIR}
 
   # 在本地记录还原文件名

@@ -191,12 +191,10 @@ EOF
     [ -d /tmp/$GH_REPO ] && rm -rf /tmp/$GH_REPO
     git clone https://$GH_PAT@github.com/$GH_BACKUP_USER/$GH_REPO.git --depth 1 --quiet /tmp/$GH_REPO
 
-    # 压缩备份数据，只备份 data/ 目录下的 config.yaml 和 sqlite.db； resource/ 目录下名字有 custom 的自定义主题文件夹
+    # 压缩备份数据，只备份 data/ 目录下的 config.yaml 和 sqlite.db
     if [ -d /tmp/$GH_REPO ]; then
       TIME=$(date "+%Y-%m-%d-%H:%M:%S")
       echo "↓↓↓↓↓↓↓↓↓↓ dashboard-$TIME.tar.gz list ↓↓↓↓↓↓↓↓↓↓"
-      [ -d "resource" ] && find resource/ -type d -name "*custom*" | tar czvf /tmp/$GH_REPO/dashboard-$TIME.tar.gz -T- data/ || tar czvf /tmp/$GH_REPO/dashboard-$TIME.tar.gz data/
-      echo -e "↑↑↑↑↑↑↑↑↑↑ dashboard-$TIME.tar.gz list ↑↑↑↑↑↑↑↑↑↑\n\n"
 
       # 更新备份 Github 库，删除 5 天前的备份
       cd /tmp/$GH_REPO
