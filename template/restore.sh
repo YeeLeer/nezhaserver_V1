@@ -112,12 +112,9 @@ if [ -e $TEMP_DIR/backup.tar.gz ]; then
     hint "\n Stop Nezha-dashboard \n" && cmd_systemctl disable
   fi
 
-  # 容器版的备份旧方案是 /dashboard 文件夹，新方案是备份工作目录 < WORK_DIR > 下的文件，此判断用于根据压缩包里的目录架构判断到哪个目录下解压，以兼容新旧备份方案
-  FILE_LIST=$(tar tzf $TEMP_DIR/backup.tar.gz)
-  FILE_PATH=$(sed -n 's#\(.*/\)data/sqlite\.db.*#\1#gp' <<< "$FILE_LIST")
-
   # 复制临时文件到正式的工作文件夹
-  cp -rf ${TEMP_DIR}/${FILE_PATH}data/* ${WORK_DIR}/data/
+  tar tzf $TEMP_DIR/backup.tar.gz
+  cp -rf ${TEMP_DIR}/data/* ${WORK_DIR}/data/
   rm -rf ${TEMP_DIR}
 
   # 在本地记录还原文件名
