@@ -162,8 +162,7 @@ EOF
     if [ -n "${DASHBOARD_VERSION}" ]; then
       DASHBOARD_LATEST="${DASHBOARD_VERSION}"
     else
-      # DASHBOARD_LATEST=$(wget -qO- "${GH_PROXY}https://api.github.com/repos/naiba/nezha/releases/latest" | awk -F '"' '/"tag_name"/{print $4}')
-      DASHBOARD_LATEST=$(curl -sSL "${GH_PROXY}https://api.github.com/repos/naiba/nezha/releases/latest" | awk -F '"' '/"tag_name"/{print $4}')
+      DASHBOARD_LATEST="latest"
     fi
     # wget -O $WORK_DIR/dashboard.zip ${GH_PROXY}https://github.com/naiba/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip
     curl -sSL ${GH_PROXY}https://github.com/naiba/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip -o $WORK_DIR/dashboard.zip
@@ -429,8 +428,8 @@ stderr_logfile=/dev/null
 stdout_logfile=/dev/null
 EOF
 
-  # 赋执行权给 sh 及所有应用
-  chmod +x $WORK_DIR/{cloudflared,nezha-agent,*.sh}
+  # 赋执行权给 sh
+  chmod +x $WORK_DIR/*.sh
 fi
 
 # 运行 supervisor 进程守护
