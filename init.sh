@@ -87,7 +87,7 @@ if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
       fi
 
       GRPC_PROXY_RUN="$WORK_DIR/caddy run --config $WORK_DIR/Caddyfile --watch"
-      cat > $WORK_DIR/Caddyfile  << EOF
+      cat > $WORK_DIR/Caddyfile << EOF
 :$WEB_PORT {
     reverse_proxy /* 127.0.0.1:$GRPC_PORT
 }
@@ -100,7 +100,16 @@ EOF
       ;;
     "nginx" )
       GRPC_PROXY_RUN='nginx -g "daemon off;"'
-      cat > /etc/nginx/conf.d/default.conf  << EOF
+      cat > /etc/nginx/nginx.conf << EOF
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+error_log /var/log/nginx/error.log;
+include /etc/nginx/modules-enabled/*.conf;
+events {
+worker_connections 768;
+# multi_accept on;
+}
 server {
     listen $GRPC_PROXY_PORT ssl http2;
     listen [::]:$GRPC_PROXY_PORT ssl http2;
