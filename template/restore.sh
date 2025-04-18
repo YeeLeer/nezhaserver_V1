@@ -71,7 +71,7 @@ fi
 
 # 获取 Github 上的 README.md 文件内容
 # ONLINE="$(wget -qO- --header="Authorization: token $GH_PAT" ${GH_PROXY}https://raw.githubusercontent.com/$GH_BACKUP_USER/$GH_REPO/main/README.md | sed "/^$/d" | head -n 1)"
-ONLINE="$(curl -sL --header "Authorization: token $GH_PAT" ${GH_PROXY}https://raw.githubusercontent.com/$GH_BACKUP_USER/$GH_REPO/main/README.md | sed "/^$/d" | head -n 1)"
+ONLINE="$(curl -sSL --header "Authorization: token $GH_PAT" ${GH_PROXY}https://raw.githubusercontent.com/$GH_BACKUP_USER/$GH_REPO/main/README.md | sed "/^$/d" | head -n 1)"
 
 # 若用户在 Github 的 README.md 里改了内容包含关键词 backup，则触发实时备份；为解决 Github cdn 导致获取文件内容来回跳的问题，设置自锁并检测到备份文件后延时3分钟断开（3次 运行 restore.sh 的时间)
 if [ -z "$ONLINE" ]; then
@@ -90,7 +90,7 @@ elif [[ "$1" =~ tar\.gz$ ]]; then
   [[ "$FILE" =~ http.*/.*tar.gz ]] && FILE=$(awk -F '/' '{print $NF}' <<< $FILE) || FILE="$1"
 elif [ -z "$1" ]; then
   # BACKUP_FILE_LIST=($(wget -qO- --header="Authorization: token $GH_PAT" https://api.github.com/repos/$GH_BACKUP_USER/$GH_REPO/contents/ | awk -F '"' '/"path".*tar.gz/{print $4}' | sort -r))
-  BACKUP_FILE_LIST=($(curl -sL --header "Authorization: token $GH_PAT" https://api.github.com/repos/$GH_BACKUP_USER/$GH_REPO/contents/ | awk -F '"' '/"path".*tar.gz/{print $4}' | sort -r))
+  BACKUP_FILE_LIST=($(curl -sSL --header "Authorization: token $GH_PAT" https://api.github.com/repos/$GH_BACKUP_USER/$GH_REPO/contents/ | awk -F '"' '/"path".*tar.gz/{print $4}' | sort -r))
   until [[ "$CHOOSE" =~ ^[1-${#BACKUP_FILE_LIST[@]}]$ ]]; do
     for i in ${!BACKUP_FILE_LIST[@]}; do echo " $[i+1]. ${BACKUP_FILE_LIST[i]} "; done
     echo ""
@@ -103,7 +103,7 @@ fi
 
 DOWNLOAD_URL=https://raw.githubusercontent.com/$GH_BACKUP_USER/$GH_REPO/main/$FILE
 # wget --header="Authorization: token $GH_PAT" --header='Accept: application/vnd.github.v3.raw' -O $TEMP_DIR/backup.tar.gz ${GH_PROXY}${DOWNLOAD_URL}
-curl -sL --header "Authorization: token $GH_PAT" --header "Accept: application/vnd.github.v3.raw" -o "$TEMP_DIR/backup.tar.gz" "${GH_PROXY}${DOWNLOAD_URL}"
+curl -sSL --header "Authorization: token $GH_PAT" --header "Accept: application/vnd.github.v3.raw" -o "$TEMP_DIR/backup.tar.gz" "${GH_PROXY}${DOWNLOAD_URL}"
 
 if [ -e $TEMP_DIR/backup.tar.gz ]; then
   if [ "$IS_DOCKER" = 1 ]; then
