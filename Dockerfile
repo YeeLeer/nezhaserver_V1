@@ -2,7 +2,7 @@ FROM debian
 
 ARG WEB_PORT=80
 EXPOSE $WEB_PORT
-ARG GH_PROXY="https://ghproxy.kahu.nyc.mn/"
+ENV GH_PROXY="https://ghproxy.kahu.nyc.mn/"
 
 WORKDIR /dashboard
 
