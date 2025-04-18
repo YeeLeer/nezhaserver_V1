@@ -88,7 +88,7 @@ if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
       fi
 
       GRPC_PROXY_RUN="$WORK_DIR/caddy run --config $WORK_DIR/Caddyfile --watch"
-      cat > $WORK_DIR/Caddyfile  << ABC
+      cat > $WORK_DIR/Caddyfile  << EOF
 :$WEB_PORT {
     reverse_proxy /* 127.0.0.1:$GRPC_PORT
 }
@@ -97,11 +97,11 @@ if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
     reverse_proxy /proto.NezhaService/* h2c://127.0.0.1:$GRPC_PORT
     tls $WORK_DIR/nezha.pem $WORK_DIR/nezha.key
 }
-ABC
+EOF
       ;;
     "nginx" )
       GRPC_PROXY_RUN='nginx -g "daemon off;"'
-      cat > /etc/nginx/conf.d/default.conf  << ABC
+      cat > /etc/nginx/conf.d/default.conf  << EOF
 server {
     http2 on;
 
@@ -155,7 +155,7 @@ upstream dashboard {
     server 127.0.0.1:8008;
     keepalive 512;
 }
-ABC
+EOF
       ;;
   esac
 
@@ -205,7 +205,7 @@ ABC
   esac
 
   # 根据参数生成哪吒服务端配置文件
-  cat > ./data/config.yaml << DEF
+  cat > ./data/config.yaml << EOF
 debug: false
 realipheader: ""
 language: zh-CN
@@ -262,9 +262,9 @@ oauth2:
       - profile
     userinfourl: "$CF_USERINFOURL"
     useridpath: "sub"
-DEF
+EOF
 
-  cat > $WORK_DIR/config.yml << GHI
+  cat > $WORK_DIR/config.yml << EOF
 client_secret: $agentsecretkey
 debug: false
 disable_auto_update: false
@@ -284,7 +284,7 @@ tls: false
 use_gitee_to_upgrade: false
 use_ipv6_country_code: false
 uuid: $UUID
-GHI
+EOF
 
   # SSH path 与 GH_CLIENTSECRET 一样
   echo root:"$GH_CLIENTSECRET" | chpasswd root
