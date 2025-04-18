@@ -100,62 +100,154 @@ EOF
       ;;
     "nginx" )
       GRPC_PROXY_RUN='nginx -g "daemon off;"'
-      rm /etc/nginx/sites-enabled/default
-      cat > /etc/nginx/conf.d/default.conf << EOF
-server {
-    listen $GRPC_PROXY_PORT ssl;
-    listen [::]:$GRPC_PROXY_PORT ssl;
-    # http2 on;
+      cat > /etc/nginx/nginx.conf << EOF
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+error_log /var/log/nginx/error.log;
+include /etc/nginx/modules-enabled/*.conf;
 
+events {
+    worker_connections 768;
+}
+
+http {
+    sendfile on;
+    tcp_nopush on;
+    types_hash_max_size 2048;
+
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    # 安全优化
+    server_tokens off;
+    keepalive_timeout 65;
+
+    # SSL 配置
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers 'TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256';
+    ssl_prefer_server_ciphers on;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:50m;
+
+    # 启用 OCSP Stapling
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    resolver 8.8.8.8 1.1.1.1 valid=300s;
+    resolver_timeout 5s;
+
+    # 日志
+    access_log /var/log/nginx/access.log combined buffer=512k flush=1m;
+
+    # Gzip 压缩
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 6;
+    gzip_min_length 1000;
+    gzip_types
+        text/plain
+        text/css
+        text/xml
+        text/javascript
+        application/javascript
+        application/x-javascript
+        application/json
+        application/xml
+        application/rss+xml
+        image/svg+xml;
+
+    include /etc/nginx/conf.d/*.conf;
+    include /etc/nginx/sites-enabled/*;
+}
+
+# Cloudflare IP 段设置
+real_ip_header CF-Connecting-IP;
+set_real_ip_from 173.245.48.0/20;
+set_real_ip_from 103.21.244.0/22;
+set_real_ip_from 103.22.200.0/22;
+set_real_ip_from 103.31.4.0/22;
+set_real_ip_from 141.101.64.0/18;
+set_real_ip_from 108.162.192.0/18;
+set_real_ip_from 190.93.240.0/20;
+set_real_ip_from 188.114.96.0/20;
+set_real_ip_from 197.234.240.0/22;
+set_real_ip_from 198.41.128.0/17;
+set_real_ip_from 162.158.0.0/15;
+set_real_ip_from 104.16.0.0/13;
+set_real_ip_from 104.24.0.0/14;
+set_real_ip_from 172.64.0.0/13;
+set_real_ip_from 131.0.72.0/22;
+
+# IPv6
+set_real_ip_from 2400:cb00::/32;
+set_real_ip_from 2606:4700::/32;
+set_real_ip_from 2803:f800::/32;
+set_real_ip_from 2405:b500::/32;
+set_real_ip_from 2405:8100::/32;
+set_real_ip_from 2a06:98c0::/29;
+set_real_ip_from 2c0f:f248::/32;
+
+server {
+    listen $WEB_PORT;
+    listen [::]:$WEB_PORT;
     server_name $ARGO_DOMAIN;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen $GRPC_PROXY_PORT ssl http2;
+    listen [::]:$GRPC_PROXY_PORT ssl http2;
+    listen $GRPC_PROXY_PORT quic reuseport;
+    server_name $ARGO_DOMAIN;
+
     ssl_certificate $WORK_DIR/nezha.pem;
     ssl_certificate_key $WORK_DIR/nezha.key;
-    ssl_session_timeout 1d;
-    ssl_session_cache shared:SSL:10m;
     ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    add_header Alt-Svc 'h3=":$server_port"; ma=86400';
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
 
     underscores_in_headers on;
-    set_real_ip_from 0.0.0.0/0;
-    real_ip_header CF-Connecting-IP;
+    client_max_body_size 20M;
 
     location ^~ /proto.NezhaService/ {
+        grpc_pass grpc://127.0.0.1:$GRPC_PORT;
         grpc_set_header Host \$host;
-        grpc_set_header nz-realip \$http_CF_Connecting_IP;
-        grpc_read_timeout 600s;
-        grpc_send_timeout 600s;
-        grpc_socket_keepalive on;
-        client_max_body_size 10m;
-        grpc_buffer_size 4m;
-        grpc_pass grpc://dashboard;
+        grpc_set_header X-Real-IP \$remote_addr;
+        grpc_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        grpc_read_timeout 300s;
+        grpc_send_timeout 300s;
+        keepalive_requests 10000;
     }
 
     location ~* ^/api/v1/ws/(server|terminal|file)(.*)$ {
+        proxy_http_version 1.1;
         proxy_set_header Host \$host;
-        proxy_set_header nz-realip \$http_cf_connecting_ip;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header Origin https://\$host;
         proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection \$http_connection;
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
         proxy_pass http://127.0.0.1:$GRPC_PORT;
+        proxy_buffering off;
     }
 
     location / {
+        proxy_http_version 1.1;
         proxy_set_header Host \$host;
-        proxy_set_header nz-realip \$http_cf_connecting_ip;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-        proxy_buffer_size 128k;
-        proxy_buffers 4 256k;
-        proxy_busy_buffers_size 256k;
-        proxy_max_temp_file_size 0;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
         proxy_pass http://127.0.0.1:$GRPC_PORT;
     }
-}
-
-upstream dashboard {
-    server 127.0.0.1:$GRPC_PORT;
-    keepalive 512;
 }
 EOF
       ;;
