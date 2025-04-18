@@ -141,7 +141,6 @@ http {
         grpc_socket_keepalive on;
         client_max_body_size 10m;
         grpc_buffer_size 4m;
-        grpc_pass grpc://dashboard;
     }
 
     location ~* ^/api/v1/ws/(server|terminal|file)(.*)$ {
