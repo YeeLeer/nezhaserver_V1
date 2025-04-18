@@ -99,7 +99,7 @@ if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
 EOF
       ;;
     "nginx" )
-      GRPC_PROXY_RUN='nginx'
+      GRPC_PROXY_RUN='nginx -g "daemon off;"'
       cat > /etc/nginx/conf.d/default.conf << EOF
 server {
     listen $WEB_PORT;
