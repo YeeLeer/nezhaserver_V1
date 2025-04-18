@@ -100,17 +100,13 @@ EOF
       ;;
     "nginx" )
       GRPC_PROXY_RUN='nginx -g "daemon off;"'
-      cat > /etc/nginx/nginx.conf << EOF
-user www-data;
-worker_processes auto;
-pid /run/nginx.pid;
-include /etc/nginx/modules-enabled/*.conf;
-events {
-  worker_connections 768;
-  # multi_accept on;
+      cat > /etc/nginx/conf.d/default.conf << EOF
+server {
+    listen $WEB_PORT;
+    server_name $ARGO_DOMAIN;
+    return 301 https://$host$request_uri;
 }
-http {
-  server {
+server {
     listen $GRPC_PROXY_PORT ssl;
     listen [::]:$GRPC_PROXY_PORT ssl;
     # http2 on;
@@ -159,12 +155,11 @@ http {
         proxy_max_temp_file_size 0;
         proxy_pass http://127.0.0.1:$GRPC_PORT;
     }
-  }
+}
 
-  upstream dashboard {
+upstream dashboard {
     server 127.0.0.1:$GRPC_PORT;
     keepalive 512;
-  }
 }
 EOF
       ;;
