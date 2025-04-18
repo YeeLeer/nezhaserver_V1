@@ -2,7 +2,7 @@
 
 # 首次运行时执行以下流程，再次运行时存在 /etc/supervisor/conf.d/damon.conf 文件，直接到最后一步
 if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
-  export GH_PROXY=${GH_PROXY:-''}
+  export GH_PROXY="${GH_PROXY}"
   export GRPC_PROXY_PORT=${GRPC_PROXY_PORT:-'443'}
   export GRPC_PORT=${GRPC_PORT:-'8008'}
   export WEB_PORT=${WEB_PORT:-'80'} # 和F佬隧道设置一样
@@ -47,9 +47,6 @@ if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
   [[ "$ARGO_AUTH" =~ TunnelSecret ]] && grep -qv '"' <<< "$ARGO_AUTH" && ARGO_AUTH=$(sed 's@{@{"@g;s@[,:]@"\0"@g;s@}@"}@g' <<< "$ARGO_AUTH")  # Json 时，没有了"的处理
   [[ "$ARGO_AUTH" =~ ey[A-Z0-9a-z=]{120,250}$ ]] && ARGO_AUTH=$(awk '{print $NF}' <<< "$ARGO_AUTH") # Token 复制全部，只取最后的 ey 开始的
   [ -n "$GH_REPO" ] && grep -q '/' <<< "$GH_REPO" && GH_REPO=$(awk -F '/' '{print $NF}' <<< "$GH_REPO")  # 填了项目全路径的处理
-
-  # 检测是否需要启用 Github CDN，如能直接连通，则不使用
-  [ -n "$GH_PROXY" ] && wget --server-response --quiet --output-document=/dev/null --no-check-certificate --tries=2 --timeout=3 https://raw.githubusercontent.com/YeeLeer/nezhaserver_V1/refs/heads/main/README.md >/dev/null 2>&1 && unset GH_PROXY
 
   # 设置 DNS
   echo -e "nameserver 127.0.0.11\nnameserver 8.8.4.4\nnameserver 223.5.5.5\nnameserver 2001:4860:4860::8844\nnameserver 2400:3200::1\n" > /etc/resolv.conf
