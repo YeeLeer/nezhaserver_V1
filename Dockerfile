@@ -1,7 +1,7 @@
 FROM debian
 
-ARG PORT=80
-EXPOSE ${PORT} 443
+ARG WEB_PORT=80
+EXPOSE ${WEB_PORT} 443
 ARG GH_PROXY="https://ghproxy.kahu.nyc.mn/"
     
 WORKDIR /dashboard
