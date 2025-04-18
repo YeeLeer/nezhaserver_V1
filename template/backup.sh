@@ -72,17 +72,20 @@ elif [[ -n "$DASHBOARD_VERSION" || "$DASHBOARD_VERSION" =~ 0\.[0-9]{1,2}\.[0-9]{
 else
   cd $WORK_DIR
   DASHBOARD_NOW=$(./dashboard -v)
-  DASHBOARD_LATEST=$(wget -qO- https://api.github.com/repos/nezhahq/nezha/releases/latest | awk -F '"' '/tag_name/{print $4}')
+  # DASHBOARD_LATEST=$(wget -qO- https://api.github.com/repos/nezhahq/nezha/releases/latest | awk -F '"' '/tag_name/{print $4}')
+  DASHBOARD_LATEST=$(curl -sL https://api.github.com/repos/nezhahq/nezha/releases/latest | awk -F '"' '/tag_name/{print $4}')
   [ "v${DASHBOARD_NOW}" != "$DASHBOARD_LATEST" ] && DASHBOARD_UPDATE=true
 fi
 
 CLOUDFLARED_NOW=$(./cloudflared -v | awk '{for (i=0; i<NF; i++) if ($i=="version") {print $(i+1)}}')
-CLOUDFLARED_LATEST=$(wget -qO- https://api.github.com/repos/cloudflare/cloudflared/releases/latest | awk -F '"' '/tag_name/{print $4}')
+# CLOUDFLARED_LATEST=$(wget -qO- https://api.github.com/repos/cloudflare/cloudflared/releases/latest | awk -F '"' '/tag_name/{print $4}')
+CLOUDFLARED_LATEST=$(curl -sL https://api.github.com/repos/cloudflare/cloudflared/releases/latest | awk -F '"' '/tag_name/{print $4}')
 [[ "$CLOUDFLARED_LATEST" =~ ^20[0-9]{2}\.[0-9]{1,2}\.[0-9]+$ && "$CLOUDFLARED_NOW" != "$CLOUDFLARED_LATEST" ]] && CLOUDFLARED_UPDATE=true
 
 # 检测是否有设置备份数据
 if [[ -n "$GH_REPO" && -n "$GH_BACKUP_USER" && -n "$GH_EMAIL" && -n "$GH_PAT" ]]; then
-  IS_PRIVATE="$(wget -qO- --header="Authorization: token $GH_PAT" https://api.github.com/repos/$GH_BACKUP_USER/$GH_REPO | sed -n '/"private":/s/.*:[ ]*\([^,]*\),/\1/gp')"
+  # IS_PRIVATE="$(wget -qO- --header="Authorization: token $GH_PAT" https://api.github.com/repos/$GH_BACKUP_USER/$GH_REPO | sed -n '/"private":/s/.*:[ ]*\([^,]*\),/\1/gp')"
+  IS_PRIVATE="$(curl -sL --header "Authorization: token $GH_PAT" https://api.github.com/repos/$GH_BACKUP_USER/$GH_REPO | sed -n '/"private":/s/.*:[ ]*\([^,]*\),/\1/gp')"
   if [ "$?" != 0 ]; then
     warning "\n Could not connect to Github. Stop backup. \n"
   elif [ "$IS_PRIVATE" != true ]; then
@@ -127,7 +130,7 @@ if [[ "${DASHBOARD_UPDATE}${CLOUDFLARED_UPDATE}${IS_BACKUP}${FORCE_UPDATE}" =~ t
   if [[ "${CLOUDFLARED_UPDATE}${FORCE_UPDATE}" =~ 'true' ]]; then
     hint "\n Renew Cloudflared to $CLOUDFLARED_LATEST \n"
     # wget -O /tmp/cloudflared ${GH_PROXY}https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH && chmod +x /tmp/cloudflared
-    curl -sSL ${GH_PROXY}https://github.com/nezhahq/agent/releases/download/$AGENT_LATEST/nezha-agent_linux_$ARCH.zip -o $WORK_DIR/nezha-agent.zip
+    curl -sSL ${GH_PROXY}https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH -o /tmp/cloudflared
     if [ -s /tmp/cloudflared ]; then
       info "\n Restart Argo \n"
       if [ "$IS_DOCKER" = 1 ]; then
