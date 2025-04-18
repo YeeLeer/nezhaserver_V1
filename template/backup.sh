@@ -63,14 +63,17 @@ touch $(awk -F '=' '/NO_ACTION_FLAG/{print $2; exit}' $WORK_DIR/restore.sh)1
 [ "$1" = 'a' ] && WAY=Scheduled || WAY=Manualed
 [ "$1" = 'f' ] && WAY=Manualed && FORCE_UPDATE=true
 
-# 检查更新面板主程序 dashboard 及 cloudflared
-if [[ -z "$DASHBOARD_VERSION" || "$DASHBOARD_VERSION" =~ 0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
-  cd $WORK_DIR
-  DASHBOARD_NOW=$(./dashboard -v)
-  [ -z "$DASHBOARD_VERSION" ] && DASHBOARD_LATEST='v0.20.13' || DASHBOARD_LATEST=$(sed 's/v//; s/^/v&/' <<< "$DASHBOARD_VERSION")
-  [ "v${DASHBOARD_NOW}" != "$DASHBOARD_LATEST" ] && DASHBOARD_UPDATE=true
-else
+# 检查更新面板主程序 DASHBOARD 及 cloudflared
+if [[ -n "$DASHBOARD_VERSION" ]]; then
+  DASHBOARD_UPDATE=false
+elif [[ -n "$DASHBOARD_VERSION" || "$DASHBOARD_VERSION" =~ 0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
   error "The DASHBOARD_VERSION variable should be in a format like v0.00.00, please check."
+  DASHBOARD_UPDATE=false
+else
+  cd $WORK_DIR
+  DASHBOARD_NOW=$(./app -v)
+  DASHBOARD_LATEST=$(wget -qO- https://api.github.com/repos/nezhahq/nezha/releases/latest | awk -F '"' '/tag_name/{print $4}')
+  [ "v${DASHBOARD_NOW}" != "$DASHBOARD_LATEST" ] && DASHBOARD_UPDATE=true
 fi
 
 CLOUDFLARED_NOW=$(./cloudflared -v | awk '{for (i=0; i<NF; i++) if ($i=="version") {print $(i+1)}}')
@@ -94,7 +97,13 @@ if [[ "${DASHBOARD_UPDATE}${CLOUDFLARED_UPDATE}${IS_BACKUP}${FORCE_UPDATE}" =~ t
   # 更新面板主程序
   if [[ "${DASHBOARD_UPDATE}${FORCE_UPDATE}" =~ 'true' ]]; then
     hint "\n Renew dashboard to $DASHBOARD_LATEST \n"
-    wget -O /tmp/dashboard.zip ${GH_PROXY}https://github.com/naiba/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip
+    if [ -n "${DASHBOARD_VERSION}" ]; then
+      DASHBOARD_LATEST="${DASHBOARD_VERSION}"
+    else
+      DASHBOARD_LATEST="latest"
+    fi
+    # wget -O $WORK_DIR/dashboard.zip ${GH_PROXY}https://github.com/naiba/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip
+    curl -sSL ${GH_PROXY}https://github.com/naiba/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip -o $WORK_DIR/dashboard.zip
     unzip -o /tmp/dashboard.zip -d /tmp
     chmod +x /tmp/dashboard-linux-$ARCH
     if [ -s /tmp/dashboard-linux-$ARCH ]; then
@@ -117,7 +126,8 @@ if [[ "${DASHBOARD_UPDATE}${CLOUDFLARED_UPDATE}${IS_BACKUP}${FORCE_UPDATE}" =~ t
   # 更新 cloudflared
   if [[ "${CLOUDFLARED_UPDATE}${FORCE_UPDATE}" =~ 'true' ]]; then
     hint "\n Renew Cloudflared to $CLOUDFLARED_LATEST \n"
-    wget -O /tmp/cloudflared ${GH_PROXY}https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH && chmod +x /tmp/cloudflared
+    # wget -O /tmp/cloudflared ${GH_PROXY}https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH && chmod +x /tmp/cloudflared
+    curl -sSL ${GH_PROXY}https://github.com/nezhahq/agent/releases/download/$AGENT_LATEST/nezha-agent_linux_$ARCH.zip -o $WORK_DIR/nezha-agent.zip
     if [ -s /tmp/cloudflared ]; then
       info "\n Restart Argo \n"
       if [ "$IS_DOCKER" = 1 ]; then
