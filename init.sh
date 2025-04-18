@@ -111,12 +111,6 @@ events {
 }
 http {
   server {
-    listen $WEB_PORT;
-    listen [::]:$WEB_PORT;
-    server_name $ARGO_DOMAIN;
-    return 301 https://$host$request_uri;
-  }
-  server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     # http2 on; # Nginx > 1.25.1，请注释上面两行，启用此行
@@ -163,7 +157,7 @@ http {
         proxy_buffers 4 256k;
         proxy_busy_buffers_size 256k;
         proxy_max_temp_file_size 0;
-        proxy_pass http://127.0.0.1:8008;
+        proxy_pass http://127.0.0.1:80;
     }
   }
 
