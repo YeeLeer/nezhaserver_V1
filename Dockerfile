@@ -2,6 +2,7 @@ FROM debian
 
 ARG PORT=8080
 EXPOSE ${PORT}
+ARG GH_PROXY="https://ghproxy.kahu.nyc.mn/"
     
 WORKDIR /dashboard
 
@@ -15,7 +16,7 @@ RUN apt-get update &&\
     apt-get clean &&\
     rm -rf /var/lib/apt/lists/* &&\
     echo "#!/usr/bin/env bash\n\n\
-bash <(wget -qO- https://raw.githubusercontent.com/YeeLeer/nezhaserver_V1/refs/heads/main/init.sh)" > start.sh &&\
+bash <(wget -qO- ${GH_PROXY}https://raw.githubusercontent.com/YeeLeer/nezhaserver_V1/refs/heads/main/init.sh)" > start.sh &&\
     chmod +x start.sh
 
 ENTRYPOINT ["./start.sh"]
