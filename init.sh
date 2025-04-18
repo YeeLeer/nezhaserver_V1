@@ -293,7 +293,7 @@ EOF
   # 判断 ARGO_AUTH 为 json 还是 token
   # 如为 json 将生成 argo.json 和 argo.yml 文件
   if [[ "$ARGO_AUTH" =~ TunnelSecret ]]; then
-    ARGO_RUN="cloudflared tunnel --edge-ip-version auto --config $WORK_DIR/argo.yml run"
+    ARGO_RUN="$WORK_DIR/cloudflared --edge-ip-version auto --config $WORK_DIR/argo.yml run"
 
     echo "$ARGO_AUTH" > $WORK_DIR/argo.json
 
@@ -319,7 +319,7 @@ EOF
 
   # 如为 token 时
   elif [[ "$ARGO_AUTH" =~ ^ey[A-Z0-9a-z=]{120,250}$ ]]; then
-    ARGO_RUN="cloudflared tunnel --edge-ip-version auto --protocol http2 run --token ${ARGO_AUTH}"
+    ARGO_RUN="$WORK_DIR/cloudflared tunnel --edge-ip-version auto --protocol http2 run --token ${ARGO_AUTH}"
   fi
 
   # 生成自签署SSL证书
