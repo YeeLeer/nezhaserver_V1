@@ -99,10 +99,64 @@ if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
 EOF
       ;;
     "nginx" )
-      # wget -O /etc/nginx/conf.d/main.conf ${GH_PROXY}https://raw.githubusercontent.com/YeeLeer/nezhaserver_V1/refs/heads/main/main.conf
-      curl -sSL ${GH_PROXY}https://raw.githubusercontent.com/YeeLeer/nezhaserver_V1/refs/heads/main/main.conf -o /etc/nginx/conf.d/main.conf
-      sed -i "s#\$ARGO_DOMAIN#$ARGO_DOMAIN#g" /etc/nginx/conf.d/main.conf
       GRPC_PROXY_RUN='nginx -g "daemon off;"'
+      cat > /etc/nginx/conf.d/default.conf << EOF
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    # http2 on;
+
+    server_name $ARGO_DOMAIN;
+    ssl_certificate          $WORK_DIR/nezha.pem;
+    ssl_certificate_key      $WORK_DIR/nezha.key;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:10m;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    underscores_in_headers on;
+    set_real_ip_from 0.0.0.0/0;
+    real_ip_header CF-Connecting-IP;
+
+    location ^~ /proto.NezhaService/ {
+        grpc_set_header Host \$host;
+        grpc_set_header nz-realip \$http_CF_Connecting_IP;
+        grpc_read_timeout 600s;
+        grpc_send_timeout 600s;
+        grpc_socket_keepalive on;
+        client_max_body_size 10m;
+        grpc_buffer_size 4m;
+        grpc_pass grpc://dashboard;
+    }
+
+    location ~* ^/api/v1/ws/(server|terminal|file)(.*)$ {
+        proxy_set_header Host \$host;
+        proxy_set_header nz-realip \$http_cf_connecting_ip;
+        proxy_set_header Origin https://\$host;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_pass http://127.0.0.1:8008;
+    }
+
+    location / {
+        proxy_set_header Host \$host;
+        proxy_set_header nz-realip \$http_cf_connecting_ip;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
+        proxy_max_temp_file_size 0;
+        proxy_pass http://127.0.0.1:8008;
+    }
+}
+
+upstream dashboard {
+    server 127.0.0.1:8008;
+    keepalive 512;
+}
+EOF
       ;;
   esac
 
