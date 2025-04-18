@@ -113,12 +113,12 @@ if [ -e $TEMP_DIR/backup.tar.gz ]; then
   fi
 
   # 解压缩备份文件到正式的工作文件夹
-  tar -xzvf $TEMP_DIR/backup.tar.gz -C ${WORK_DIR}/data/
+  rm -rf ${WORK_DIR}/data/*
+  tar -xzvf $TEMP_DIR/backup.tar.gz -C ${WORK_DIR}
   rm -rf ${TEMP_DIR}
 
   # 在本地记录还原文件名
   echo "$ONLINE" > $WORK_DIR/dbfile
-  rm -f $TEMP_DIR/backup.tar.gz
   if [ "$IS_DOCKER" = 1 ]; then
     hint "\n$(supervisorctl start agent nezha grpcproxy)\n"
   else
