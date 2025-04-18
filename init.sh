@@ -2,7 +2,7 @@
 
 # 首次运行时执行以下流程，再次运行时存在 /etc/supervisor/conf.d/damon.conf 文件，直接到最后一步
 if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
-  export GH_PROXY=${GH_PROXY:-''}  # 国外不填
+  export GH_PROXY="${GH_PROXY}"
   export GRPC_PROXY_PORT=${GRPC_PROXY_PORT:-'443'}
   export GRPC_PORT=${GRPC_PORT:-'8008'}
   export WEB_PORT=${WEB_PORT:-'80'} # 和F佬隧道设置一样
