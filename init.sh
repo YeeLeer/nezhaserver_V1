@@ -109,10 +109,9 @@ events {
     worker_connections 768;
     # multi_accept on;
 }
-server {
-    listen $GRPC_PROXY_PORT ssl http2;
-    listen [::]:$GRPC_PROXY_PORT ssl http2;
-    # http2 on; # Nginx > 1.25.1，请注释上面两行，启用此行
+http {
+  server {
+    http2 on;
 
     server_name $ARGO_DOMAIN;
     ssl_certificate          $WORK_DIR/nezha.pem;
@@ -144,7 +143,7 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
-        proxy_pass http://127.0.0.1:$GRPC_PORT;
+        proxy_pass http://127.0.0.1:8008;
     }
 
     location / {
@@ -156,13 +155,14 @@ server {
         proxy_buffers 4 256k;
         proxy_busy_buffers_size 256k;
         proxy_max_temp_file_size 0;
-        proxy_pass http://127.0.0.1:$GRPC_PORT;
+        proxy_pass http://127.0.0.1:8008;
     }
   }
 
-upstream dashboard {
-    server 127.0.0.1:$GRPC_PORT;
-    keepalive 512;
+  upstream dashboard {
+      server 127.0.0.1:8008;
+      keepalive 512;
+  }
 }
 EOF
       ;;
