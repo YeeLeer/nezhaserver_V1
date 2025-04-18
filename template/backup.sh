@@ -195,7 +195,7 @@ EOF
     if [ -d /tmp/$GH_REPO ]; then
       TIME=$(date "+%Y-%m-%d-%H:%M:%S")
       echo "↓↓↓↓↓↓↓↓↓↓ dashboard-$TIME.tar.gz list ↓↓↓↓↓↓↓↓↓↓"
-      tar czvf /tmp/$GH_REPO/dashboard-$TIME.tar.gz -T- data/ || tar czvf /tmp/$GH_REPO/dashboard-$TIME.tar.gz data/
+      tar czvf /tmp/$GH_REPO/dashboard-$TIME.tar.gz data/
       echo -e "↑↑↑↑↑↑↑↑↑↑ dashboard-$TIME.tar.gz list ↑↑↑↑↑↑↑↑↑↑\n\n"
 
       # 更新备份 Github 库，删除 5 天前的备份
