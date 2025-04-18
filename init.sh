@@ -111,11 +111,6 @@ events {
 }
 http {
   server {
-    listen $WEB_PORT;
-    server_name $ARGO_DOMAIN;
-    return 301 https://$host$request_uri;
-  }
-  server {
     listen $GRPC_PROXY_PORT ssl;
     listen [::]:$GRPC_PROXY_PORT ssl;
     # http2 on;
