@@ -109,8 +109,7 @@ events {
     worker_connections 768;
     # multi_accept on;
 }
-http {
-  server {
+server {
     listen $GRPC_PROXY_PORT ssl http2;
     listen [::]:$GRPC_PROXY_PORT ssl http2;
     # http2 on; # Nginx > 1.25.1，请注释上面两行，启用此行
@@ -161,10 +160,9 @@ http {
     }
   }
 
-  upstream dashboard {
+upstream dashboard {
     server 127.0.0.1:$GRPC_PORT;
     keepalive 512;
-  }
 }
 EOF
       ;;
