@@ -107,10 +107,15 @@ pid /run/nginx.pid;
 error_log /var/log/nginx/error.log;
 include /etc/nginx/modules-enabled/*.conf;
 events {
-worker_connections 768;
-# multi_accept on;
+  worker_connections 768;
+  # multi_accept on;
 }
-server {
+http {
+  upstream dashboard {
+    server 127.0.0.1:$GRPC_PORT;
+    keepalive 1024;
+  }
+  server {
     listen $GRPC_PROXY_PORT ssl http2;
     listen [::]:$GRPC_PROXY_PORT ssl http2;
     # http2 on; # Nginx > 1.25.1，请注释上面两行，启用此行
@@ -159,11 +164,7 @@ server {
         proxy_max_temp_file_size 0;
         proxy_pass http://127.0.0.1:$GRPC_PORT;
     }
-}
-
-upstream dashboard {
-    server 127.0.0.1:$GRPC_PORT;
-    keepalive 512;
+  }
 }
 EOF
       ;;
