@@ -102,7 +102,9 @@ EOF
       GRPC_PROXY_RUN='nginx -g "daemon off;"'
       cat > /etc/nginx/conf.d/default.conf  << EOF
 server {
-    http2 on;
+    listen $GRPC_PROXY_PORT ssl http2;
+    listen [::]:$GRPC_PROXY_PORT ssl http2;
+    # http2 on; # Nginx > 1.25.1，请注释上面两行，启用此行
 
     server_name $ARGO_DOMAIN;
     ssl_certificate          $WORK_DIR/nezha.pem;
