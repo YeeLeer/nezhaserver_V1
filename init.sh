@@ -162,7 +162,7 @@ EOF
     if [ -n "${DASHBOARD_VERSION}" ]; then
       DASHBOARD_LATEST="${DASHBOARD_VERSION}"
     else
-      DASHBOARD_LATEST="latest"
+      DASHBOARD_LATEST=$(curl -sSL "${GH_PROXY}https://api.github.com/repos/naiba/nezha/releases/latest" | awk -F '"' '/"tag_name"/{print $4}')
     fi
     # wget -O $WORK_DIR/dashboard.zip ${GH_PROXY}https://github.com/naiba/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip
     curl -sSL ${GH_PROXY}https://github.com/naiba/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip -o $WORK_DIR/dashboard.zip
