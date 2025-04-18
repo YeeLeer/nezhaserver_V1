@@ -112,9 +112,8 @@ if [ -e $TEMP_DIR/backup.tar.gz ]; then
     hint "\n Stop Nezha-dashboard \n" && cmd_systemctl disable
   fi
 
-  # 复制临时文件到正式的工作文件夹
-  tar tzf $TEMP_DIR/backup.tar.gz
-  cp -rf ${TEMP_DIR}/data/* ${WORK_DIR}/data/
+  # 解压缩备份文件到正式的工作文件夹
+  tar -xzvf $TEMP_DIR/backup.tar.gz -C ${WORK_DIR}/data/
   rm -rf ${TEMP_DIR}
 
   # 在本地记录还原文件名
