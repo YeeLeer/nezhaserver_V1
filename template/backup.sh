@@ -71,7 +71,7 @@ elif [[ -n "$DASHBOARD_VERSION" || "$DASHBOARD_VERSION" =~ 0\.[0-9]{1,2}\.[0-9]{
   DASHBOARD_UPDATE=false
 else
   cd $WORK_DIR
-  DASHBOARD_NOW=$(./app -v)
+  DASHBOARD_NOW=$(./dashboard -v)
   DASHBOARD_LATEST=$(wget -qO- https://api.github.com/repos/nezhahq/nezha/releases/latest | awk -F '"' '/tag_name/{print $4}')
   [ "v${DASHBOARD_NOW}" != "$DASHBOARD_LATEST" ] && DASHBOARD_UPDATE=true
 fi
