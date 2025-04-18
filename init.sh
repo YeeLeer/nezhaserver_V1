@@ -111,7 +111,9 @@ events {
 }
 http {
   server {
-    http2 on;
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    # http2 on; # Nginx > 1.25.1，请注释上面两行，启用此行
 
     server_name $ARGO_DOMAIN;
     ssl_certificate          $WORK_DIR/nezha.pem;
