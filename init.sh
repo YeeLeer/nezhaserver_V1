@@ -111,6 +111,12 @@ events {
 }
 http {
   server {
+    listen $WEB_PORT;
+    listen [::]:$WEB_PORT;
+    server_name $ARGO_DOMAIN;
+    return 301 https://$host$request_uri;
+  }
+  server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     # http2 on; # Nginx > 1.25.1，请注释上面两行，启用此行
@@ -127,6 +133,7 @@ http {
     real_ip_header CF-Connecting-IP;
 
     location ^~ /proto.NezhaService/ {
+        grpc_pass grpc://127.0.0.1:8008;
         grpc_set_header Host \$host;
         grpc_set_header nz-realip \$http_CF_Connecting_IP;
         grpc_read_timeout 600s;
