@@ -10,7 +10,7 @@ if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
 
   export DASHBOARD_VERSION="${DASHBOARD_VERSION}"
   export AGENT_VERSION="${AGENT_VERSION}"
-  export REVERSE_PROXY_MODE=${REVERSE_PROXY_MODE:-'caddy'} # caddy 或 nginx 二选一，在玩具只有开放的端口时和caddy运行不正常情况下用grpcwebproxy,隧道端口和GRPC_PORT用玩具端口
+  export REVERSE_PROXY_MODE=${REVERSE_PROXY_MODE:-'caddy'} # caddy 或 nginx 二选一
 
   export runx=${runx:-'0'}  # runx为1时运行app，默认不运行
 
