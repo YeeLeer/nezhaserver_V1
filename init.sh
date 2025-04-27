@@ -100,33 +100,30 @@ EOF
       ;;
     "nginx" )
       GRPC_PROXY_RUN='nginx -g "daemon off;"'
-    cat > /etc/nginx/nginx.conf  << EOF
-user www-data;
-worker_processes auto;
-pid /run/nginx.pid;
-include /etc/nginx/modules-enabled/*.conf;
-events {
-        worker_connections 768;
-        # multi_accept on;
-}
-http {
-  upstream dashboard {
-    server 127.0.0.1:$GRPC_PORT;
-    keepalive 512;
-  }
-  server {
-    listen 127.0.0.1:$GRPC_PROXY_PORT ssl http2;
-    server_name $ARGO_DOMAIN;
+    cat > /etc/nginx/conf.d/default.conf << EOF
+server {
+    listen $GRPC_PROXY_PORT ssl;
+    listen [::]:$GRPC_PROXY_PORT ssl;
+    # http2 on; # Nginx > 1.25.1，请注释上面两行，启用此行
+
+    server_name $ARGO_DOMAIN; # 替换为你的域名
     ssl_certificate          $WORK_DIR/nezha.pem;
     ssl_certificate_key      $WORK_DIR/nezha.key;
-    ssl_stapling on;
+    # ssl_stapling on;
     ssl_session_timeout 1d;
     ssl_session_cache shared:SSL:10m; # 如果与其他配置冲突，请注释此项
     ssl_protocols TLSv1.2 TLSv1.3;
 
     underscores_in_headers on;
+    set_real_ip_from 0.0.0.0/0; # 替换为你的 CDN 回源 IP 地址段
+    real_ip_header CF-Connecting-IP; # 替换为你的 CDN 提供的私有 header，此处为 CloudFlare 默认
+    # 如果你使用nginx作为最外层，把上面两行注释掉
+
     # grpc 相关
     location ^~ /proto.NezhaService/ {
+        grpc_set_header Host $host;
+        grpc_set_header nz-realip $http_CF_Connecting_IP; # 替换为你的 CDN 提供的私有 header，此处为 CloudFlare 默认
+        # grpc_set_header nz-realip $remote_addr; # 如果你使用nginx作为最外层，就把上面一行注释掉，启用此行
         grpc_read_timeout 600s;
         grpc_send_timeout 600s;
         grpc_socket_keepalive on;
@@ -136,23 +133,34 @@ http {
     }
     # websocket 相关
     location ~* ^/api/v1/ws/(server|terminal|file)(.*)$ {
+        proxy_set_header Host $host;
+        proxy_set_header nz-realip $http_cf_connecting_ip; # 替换为你的 CDN 提供的私有 header，此处为 CloudFlare 默认
+        # proxy_set_header nz-realip $remote_addr; # 如果你使用nginx作为最外层，就把上面一行注释掉，启用此行
+        proxy_set_header Origin https://$host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
-        proxy_pass http://127.0.0.1:$GRPC_PROXY_PORT;
+        proxy_pass http://localhost:$GRPC_PORT;
     }
     # web
     location / {
+        proxy_set_header Host $host;
+        proxy_set_header nz-realip $http_cf_connecting_ip; # 替换为你的 CDN 提供的私有 header，此处为 CloudFlare 默认
+        # proxy_set_header nz-realip $remote_addr; # 如果你使用nginx作为最外层，就把上面一行注释掉，启用此行
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
         proxy_buffer_size 128k;
         proxy_buffers 4 256k;
         proxy_busy_buffers_size 256k;
         proxy_max_temp_file_size 0;
-        proxy_pass http://127.0.0.1:$WEB_PORT;
+        proxy_pass http://localhost:$GRPC_PORT;
     }
-    access_log  /dev/null;
-    error_log   /dev/null;
-  }
+}
+
+upstream dashboard {
+    server localhost:$GRPC_PORT;
+    keepalive 512;
 }
 EOF
       ;;
