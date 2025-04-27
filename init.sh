@@ -119,7 +119,13 @@ http {
     server_name $ARGO_DOMAIN;
     ssl_certificate          $WORK_DIR/nezha.pem;
     ssl_certificate_key      $WORK_DIR/nezha.key;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:10m;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
     underscores_in_headers on;
+    set_real_ip_from 0.0.0.0/0;
+    real_ip_header CF-Connecting-IP;
     # grpc 相关
     location ^~ /proto.NezhaService/ {
         grpc_set_header Host $host;
