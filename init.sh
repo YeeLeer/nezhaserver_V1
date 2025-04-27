@@ -138,7 +138,7 @@ http {
     location ~* ^/api/v1/ws/(server|terminal|file)(.*)$ {
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
-        proxy_pass http://127.0.0.1:8008;
+        proxy_pass http://127.0.0.1:$GRPC_PROXY_PORT;
     }
     # web
     location / {
@@ -148,7 +148,7 @@ http {
         proxy_buffers 4 256k;
         proxy_busy_buffers_size 256k;
         proxy_max_temp_file_size 0;
-        proxy_pass http://127.0.0.1:8008;
+        proxy_pass http://127.0.0.1:$WEB_PORT;
     }
     access_log  /dev/null;
     error_log   /dev/null;
