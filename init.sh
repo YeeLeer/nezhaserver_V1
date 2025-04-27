@@ -124,7 +124,7 @@ http {
       grpc_read_timeout 300s;
       grpc_send_timeout 300s;
       grpc_socket_keepalive on;
-      grpc_pass grpc://grpcservers;
+      grpc_pass grpc://dashboard;
     }
     access_log  /dev/null;
     error_log   /dev/null;
