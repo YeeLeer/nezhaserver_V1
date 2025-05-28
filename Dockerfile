@@ -1,9 +1,5 @@
 FROM debian
 
-ARG WEB_PORT=80
-EXPOSE $WEB_PORT
-ARG GH_PROXY=${GH_PROXY:-''}
-
 WORKDIR /dashboard
 
 RUN apt-get update &&\
