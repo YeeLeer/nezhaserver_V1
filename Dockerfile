@@ -3,7 +3,7 @@ FROM debian
 WORKDIR /dashboard
 
 RUN apt-get update &&\
-    apt-get -y install openssh-server wget curl iproute2 vim git cron unzip supervisor sqlite3 &&\
+    apt-get -y install openssh-server wget curl iproute2 vim git cron unzip supervisor sqlite3 openssl coreutils tar &&\
     git config --global core.bigFileThreshold 1k &&\
     git config --global core.compression 0 &&\
     git config --global advice.detachedHead false &&\

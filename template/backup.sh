@@ -17,7 +17,7 @@ DASHBOARD_VERSION=
 
 ########
 
-# version: 2025.04.18
+# version: 2025.08.08
 
 warning() { echo -e "\033[31m\033[01m$*\033[0m"; }  # 红色
 error() { echo -e "\033[31m\033[01m$*\033[0m" && exit 1; } # 红色
@@ -27,37 +27,31 @@ hint() { echo -e "\033[33m\033[01m$*\033[0m"; }   # 黄色
 cmd_systemctl() {
   local ENABLE_DISABLE=$1
   if [ "$ENABLE_DISABLE" = 'enable' ]; then
-    if [ "$SYSTEM" = 'Alpine' ]; then
+    # 与 vps_nezha.sh 一致：systemd 服务名为 dashboard，Alpine 用 openrc(rc-service)
+    if [ -f /etc/alpine-release ] || [ "$SYSTEM" = 'Alpine' ]; then
       local TRY=5
-      until [ $(systemctl is-active nezha-dashboard) = 'active' ]; do
-        systemctl stop nezha-dashboard; sleep 1
-        systemctl start nezha-dashboard
+      until [ "$(rc-service dashboard status 2>/dev/null)" = 'started' ]; do
+        rc-service dashboard stop >/dev/null 2>&1; sleep 1
+        rc-service dashboard start
         ((TRY--))
         [ "$TRY" = 0 ] && break
       done
-      cat > /etc/local.d/nezha-dashboard.start << ABC
-#!/usr/bin/env bash
-
-systemctl start nezha-dashboard
-ABC
-      chmod +x /etc/local.d/nezha-dashboard.start
-      rc-update add local >/dev/null 2>&1
+      rc-update add dashboard default >/dev/null 2>&1
     else
-      systemctl enable --now nezha-dashboard
+      systemctl enable --now dashboard
     fi
 
   elif [ "$ENABLE_DISABLE" = 'disable' ]; then
-    if [ "$SYSTEM" = 'Alpine' ]; then
-      systemctl stop nezha-dashboard
-      rm -f /etc/local.d/nezha-dashboard.start
+    if [ -f /etc/alpine-release ] || [ "$SYSTEM" = 'Alpine' ]; then
+      rc-service dashboard stop >/dev/null 2>&1
     else
-      systemctl disable --now nezha-dashboard
+      systemctl disable --now dashboard
     fi
   fi
 }
 
 # 运行备份脚本时，自锁一定时间以防 Github 缓存的原因导致数据马上被还原
-touch $(awk -F '=' '/NO_ACTION_FLAG/{print $2; exit}' $WORK_DIR/restore.sh)1
+[ -s $WORK_DIR/restore.sh ] && touch $(awk -F '=' '/NO_ACTION_FLAG/{print $2; exit}' $WORK_DIR/restore.sh)1
 
 # 手自动标志
 [ "$1" = 'a' ] && WAY=Scheduled || WAY=Manualed
@@ -77,10 +71,12 @@ else
   [ "v${DASHBOARD_NOW}" != "$DASHBOARD_LATEST" ] && DASHBOARD_UPDATE=true
 fi
 
-CLOUDFLARED_NOW=$(./cloudflared -v | awk '{for (i=0; i<NF; i++) if ($i=="version") {print $(i+1)}}')
-# CLOUDFLARED_LATEST=$(wget -qO- https://api.github.com/repos/cloudflare/cloudflared/releases/latest | awk -F '"' '/tag_name/{print $4}')
-CLOUDFLARED_LATEST=$(curl -sSL https://api.github.com/repos/cloudflare/cloudflared/releases/latest | awk -F '"' '/tag_name/{print $4}')
-[[ "$CLOUDFLARED_LATEST" =~ ^20[0-9]{2}\.[0-9]{1,2}\.[0-9]+$ && "$CLOUDFLARED_NOW" != "$CLOUDFLARED_LATEST" ]] && CLOUDFLARED_UPDATE=true
+if [ "${ENABLE_ARGO}" = "true" ]; then
+  CLOUDFLARED_NOW=$(./cloudflared -v | awk '{for (i=0; i<NF; i++) if ($i=="version") {print $(i+1)}}')
+  # CLOUDFLARED_LATEST=$(wget -qO- https://api.github.com/repos/cloudflare/cloudflared/releases/latest | awk -F '"' '/tag_name/{print $4}')
+  CLOUDFLARED_LATEST=$(curl -sSL https://api.github.com/repos/cloudflare/cloudflared/releases/latest | awk -F '"' '/tag_name/{print $4}')
+  [[ "$CLOUDFLARED_LATEST" =~ ^20[0-9]{2}\.[0-9]{1,2}\.[0-9]+$ && "$CLOUDFLARED_NOW" != "$CLOUDFLARED_LATEST" ]] && CLOUDFLARED_UPDATE=true
+fi
 
 # 检测是否有设置备份数据
 if [[ -n "$GH_REPO" && -n "$GH_BACKUP_USER" && -n "$GH_EMAIL" && -n "$GH_PAT" ]]; then
@@ -105,8 +101,8 @@ if [[ "${DASHBOARD_UPDATE}${CLOUDFLARED_UPDATE}${IS_BACKUP}${FORCE_UPDATE}" =~ t
     else
       DASHBOARD_LATEST="latest"
     fi
-    # wget -O $WORK_DIR/dashboard.zip ${GH_PROXY}https://github.com/naiba/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip
-    curl -sSL ${GH_PROXY}https://github.com/naiba/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip -o $WORK_DIR/dashboard.zip
+    # wget -O $WORK_DIR/dashboard.zip ${GH_PROXY}https://github.com/nezhahq/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip
+    curl -sSL ${GH_PROXY}https://github.com/nezhahq/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip -o /tmp/dashboard.zip
     unzip -o /tmp/dashboard.zip -d /tmp
     chmod +x /tmp/dashboard-linux-$ARCH
     if [ -s /tmp/dashboard-linux-$ARCH ]; then
@@ -126,8 +122,8 @@ if [[ "${DASHBOARD_UPDATE}${CLOUDFLARED_UPDATE}${IS_BACKUP}${FORCE_UPDATE}" =~ t
     rm -rf /tmp/dist /tmp/dashboard.zip
   fi
 
-  # 更新 cloudflared
-  if [[ "${CLOUDFLARED_UPDATE}${FORCE_UPDATE}" =~ 'true' ]]; then
+  # 更新 cloudflared（ENABLE_ARGO=false 时跳过）
+  if [ "${ENABLE_ARGO}" = "true" ] && [[ "${CLOUDFLARED_UPDATE}${FORCE_UPDATE}" =~ 'true' ]]; then
     hint "\n Renew Cloudflared to $CLOUDFLARED_LATEST \n"
     # wget -O /tmp/cloudflared ${GH_PROXY}https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH && chmod +x /tmp/cloudflared
     curl -sSL ${GH_PROXY}https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH -o /tmp/cloudflared
@@ -147,6 +143,8 @@ if [[ "${DASHBOARD_UPDATE}${CLOUDFLARED_UPDATE}${IS_BACKUP}${FORCE_UPDATE}" =~ t
 
   # 克隆备份仓库，压缩备份文件，上传更新
   if [ "$IS_BACKUP" = 'true' ]; then
+    # 定时任务触发时 cwd 不固定，先切到工作目录
+    cd $WORK_DIR
     # 备份前先停掉面板，设置 git 环境变量，减少系统开支
     if [ "$IS_DOCKER" != 1 ]; then
       cmd_systemctl disable >/dev/null 2>&1
@@ -231,5 +229,9 @@ if [ "$IS_DOCKER" = 1 ]; then
   [ $(supervisorctl status all | grep -c "RUNNING") = $(grep -c '\[program:.*\]' /etc/supervisor/conf.d/damon.conf) ] && info "\n All programs started! \n" || error "\n Failed to start program! \n"
 else
   cmd_systemctl enable >/dev/null 2>&1
-  [ "$(systemctl is-active nezha-dashboard)" = 'active' ] && info "\n Nezha dashboard started! \n" || error "\n Failed to start Nezha dashboard! \n"
+  if [ -f /etc/alpine-release ] || [ "$SYSTEM" = 'Alpine' ]; then
+    [ "$(rc-service dashboard status 2>/dev/null)" = 'started' ] && info "\n Nezha dashboard started! \n" || error "\n Failed to start Nezha dashboard! \n"
+  else
+    [ "$(systemctl is-active dashboard)" = 'active' ] && info "\n Nezha dashboard started! \n" || error "\n Failed to start Nezha dashboard! \n"
+  fi
 fi

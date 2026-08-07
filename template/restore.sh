@@ -14,7 +14,7 @@ IS_DOCKER=
 
 ########
 
-# version: 2025.04.18
+# version: 2025.08.08
 
 trap "rm -rf $TEMP_DIR; echo -e '\n' ;exit" INT QUIT TERM EXIT
 
@@ -28,31 +28,25 @@ hint() { echo -e "\033[33m\033[01m$*\033[0m"; }   # 黄色
 cmd_systemctl() {
   local ENABLE_DISABLE=$1
   if [ "$ENABLE_DISABLE" = 'enable' ]; then
-    if [ "$SYSTEM" = 'Alpine' ]; then
+    # 与 vps_nezha.sh 一致：systemd 服务名为 dashboard，Alpine 用 openrc(rc-service)
+    if [ -f /etc/alpine-release ] || [ "$SYSTEM" = 'Alpine' ]; then
       local TRY=5
-      until [ $(systemctl is-active nezha-dashboard) = 'active' ]; do
-        systemctl stop nezha-dashboard; sleep 1
-        systemctl start nezha-dashboard
+      until [ "$(rc-service dashboard status 2>/dev/null)" = 'started' ]; do
+        rc-service dashboard stop >/dev/null 2>&1; sleep 1
+        rc-service dashboard start
         ((TRY--))
         [ "$TRY" = 0 ] && break
       done
-      cat > /etc/local.d/nezha-dashboard.start << ABC
-#!/usr/bin/env bash
-
-systemctl start nezha-dashboard
-ABC
-      chmod +x /etc/local.d/nezha-dashboard.start
-      rc-update add local >/dev/null 2>&1
+      rc-update add dashboard default >/dev/null 2>&1
     else
-      systemctl enable --now nezha-dashboard
+      systemctl enable --now dashboard
     fi
 
   elif [ "$ENABLE_DISABLE" = 'disable' ]; then
-    if [ "$SYSTEM" = 'Alpine' ]; then
-      systemctl stop nezha-dashboard
-      rm -f /etc/local.d/nezha-dashboard.start
+    if [ -f /etc/alpine-release ] || [ "$SYSTEM" = 'Alpine' ]; then
+      rc-service dashboard stop >/dev/null 2>&1
     else
-      systemctl disable --now nezha-dashboard
+      systemctl disable --now dashboard
     fi
   fi
 }
@@ -107,7 +101,11 @@ curl -sSL --header "Authorization: token $GH_PAT" --header "Accept: application/
 
 if [ -e $TEMP_DIR/backup.tar.gz ]; then
   if [ "$IS_DOCKER" = 1 ]; then
-    hint "\n$(supervisorctl stop agent nezha grpcproxy)\n"
+    if [ "${ENABLE_ARGO}" = "true" ]; then
+      hint "\n$(supervisorctl stop agent nezha grpcproxy)\n"
+    else
+      hint "\n$(supervisorctl stop agent nezha)\n"
+    fi
   else
     hint "\n Stop Nezha-dashboard \n" && cmd_systemctl disable
   fi
@@ -120,10 +118,14 @@ if [ -e $TEMP_DIR/backup.tar.gz ]; then
   # 在本地记录还原文件名
   echo "$ONLINE" > $WORK_DIR/dbfile
   if [ "$IS_DOCKER" = 1 ]; then
-    hint "\n$(supervisorctl start agent nezha grpcproxy)\n"
-  else
-    hint "\n Start Nezha-dashboard \n" && cmd_systemctl enable >/dev/null 2>&1
-  fi
+    if [ "${ENABLE_ARGO}" = "true" ]; then
+      hint "\n$(supervisorctl start agent nezha grpcproxy)\n"
+    else
+      hint "\n$(supervisorctl start agent nezha)\n"
+    fi
+else
+  hint "\n Start Nezha-dashboard \n" && cmd_systemctl enable >/dev/null 2>&1
+fi
   sleep 3
 else
   warning "\n Failed to download backup file! \n"
@@ -132,5 +134,9 @@ fi
 if [ "$IS_DOCKER" = 1 ]; then
   [ $(supervisorctl status all | grep -c "RUNNING") = $(grep -c '\[program:.*\]' /etc/supervisor/conf.d/damon.conf) ] && info "\n All programs started! \n" || error "\n Failed to start program! \n"
 else
-  [ "$(systemctl is-active nezha-dashboard)" = 'active' ] && info "\n Nezha dashboard started! \n" || error "\n Failed to start Nezha dashboard! \n"
+  if [ -f /etc/alpine-release ] || [ "$SYSTEM" = 'Alpine' ]; then
+    [ "$(rc-service dashboard status 2>/dev/null)" = 'started' ] && info "\n Nezha dashboard started! \n" || error "\n Failed to start Nezha dashboard! \n"
+  else
+    [ "$(systemctl is-active dashboard)" = 'active' ] && info "\n Nezha dashboard started! \n" || error "\n Failed to start Nezha dashboard! \n"
+  fi
 fi

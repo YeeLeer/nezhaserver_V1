@@ -2,15 +2,21 @@
 
 # 首次运行时执行以下流程，再次运行时存在 /etc/supervisor/conf.d/damon.conf 文件，直接到最后一步
 if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
-  export GH_PROXY="${GH_PROXY}"
-  export GRPC_PROXY_PORT=${GRPC_PROXY_PORT:-'443'}
-  export GRPC_PORT=${GRPC_PORT:-'8008'}
-  export WEB_PORT=${WEB_PORT:-'80'} # 和F佬隧道设置一样
+  # 固定变量一般不用改
+  export ENABLE_ARGO=${ENABLE_ARGO:-'true'} # true or false  #为true时开启argo.不受ipv4,ipv6限制.为false时不使用argo,直接面板 默认8008, nat_vps需cdn_rule到GRPC_PORT端口
+  export GRPC_PROXY_PORT=${GRPC_PROXY_PORT:-'443'} # 不用改
+  export GRPC_PORT=${GRPC_PORT:-'8008'} # 不用改
+  export WEB_PORT=${WEB_PORT:-'80'} # 和F佬隧道设置一样  # 不用改
   export WORK_DIR=/dashboard
 
   export DASHBOARD_VERSION="${DASHBOARD_VERSION}"
   export AGENT_VERSION="${AGENT_VERSION}"
   export runx=${runx:-'0'}  # runx为1时运行app，默认不运行
+
+  # GitHub 下载加速镜像（可空，如 https://ghproxy.com/ 或 https://mirror.ghproxy.com/）
+  export GH_PROXY="${GH_PROXY}"
+  # 面板时区（用于 config.yaml 的 location 字段）
+  export TZ=${TZ:-'Asia/Shanghai'}
 
   # oauth2设置，选择其中之一即可
   # github 带有备份还原
@@ -30,8 +36,12 @@ if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
   export CF_TOKENUR="${CF_TOKENUR}"
   export CF_USERINFOURL="${CF_USERINFOURL}"
 
+  # 自己填写这段变量
   export UUID="${UUID}"  # LOCAL_TOKEN
-  export agentsecretkey="${agentsecretkey}"  # nezhav1 key
+  export AGENT_KEY="${AGENT_KEY:-$agentsecretkey}"  # nezhav1 key (兼容旧变量名 agentsecretkey)
+  export ARGO_DOMAIN="${ARGO_DOMAIN}"  # nezhav1域名
+  export ARGO_AUTH="${ARGO_AUTH}"
+  export MY_DOMAIN="${MY_DOMAIN}"  # 直连时cdn域名
 
   # 如不分离备份的 github 账户，默认与哪吒登陆的 github 账户一致
   GH_BACKUP_USER=${GH_BACKUP_USER:-$GH_USER}
@@ -40,8 +50,28 @@ if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
   info() { echo -e "\033[32m\033[01m$*\033[0m"; }   # 绿色
   hint() { echo -e "\033[33m\033[01m$*\033[0m"; }   # 黄色
 
+  # 安全删除：路径为空时跳过，路径加引号，拒绝删除系统关键路径
+  safe_rm() {
+    local target
+    for target in "$@"; do
+      [ -z "$target" ] && continue
+      # 保护：拒绝删除根目录与系统关键目录（防路径配置错误导致灾难）
+      case "$target" in
+        /|/etc|/var|/usr|/bin|/sbin|/lib|/lib64|/dev|/proc|/sys|/run|/root)
+          hint "安全保护: 拒绝删除系统关键路径 $target"
+          continue
+          ;;
+      esac
+      # -e 跟随符号链接，损坏的链接（dangling）需用 -L 判断，否则删不掉
+      { [ -e "$target" ] || [ -L "$target" ]; } && rm -rf -- "$target"
+    done
+  }
+
   # 如参数不齐全，容器退出，另外处理某些环境变量填错后的处理
-  [[ -z "$GH_USER" || -z "$GH_CLIENTID" || -z "$GH_CLIENTSECRET" || -z "$ARGO_AUTH" || -z "$ARGO_DOMAIN" ]] && error " There are variables that are not set. "
+  [[ -z "$GH_USER" || -z "$GH_CLIENTID" || -z "$GH_CLIENTSECRET" ]] && error " There are variables that are not set. "
+  if [ "${ENABLE_ARGO}" = "true" ]; then
+    [[ -z "$ARGO_AUTH" || -z "$ARGO_DOMAIN" ]] && error " ENABLE_ARGO=true 时 ARGO_AUTH 和 ARGO_DOMAIN 必须设置. "
+  fi
   [[ "$ARGO_AUTH" =~ TunnelSecret ]] && grep -qv '"' <<< "$ARGO_AUTH" && ARGO_AUTH=$(sed 's@{@{"@g;s@[,:]@"\0"@g;s@}@"}@g' <<< "$ARGO_AUTH")  # Json 时，没有了"的处理
   [[ "$ARGO_AUTH" =~ ey[A-Z0-9a-z=]{120,250}$ ]] && ARGO_AUTH=$(awk '{print $NF}' <<< "$ARGO_AUTH") # Token 复制全部，只取最后的 ey 开始的
   [ -n "$GH_REPO" ] && grep -q '/' <<< "$GH_REPO" && GH_REPO=$(awk -F '/' '{print $NF}' <<< "$GH_REPO")  # 填了项目全路径的处理
@@ -52,8 +82,9 @@ if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
   # 设置 DNS
   echo -e "nameserver 127.0.0.11\nnameserver 8.8.4.4\nnameserver 223.5.5.5\nnameserver 2001:4860:4860::8844\nnameserver 2400:3200::1\n" > /etc/resolv.conf
 
-  # 设置 +8 时区 (北京时间)
-  ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+  # 设置时区（默认 +8 北京时间，可通过 TZ 变量修改）
+  echo "$TZ" > /etc/timezone
+  ln -fs /usr/share/zoneinfo/$TZ /etc/localtime
   dpkg-reconfigure -f noninteractive tzdata
 
   # 判断处理器架构
@@ -64,7 +95,7 @@ if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
     x86_64|amd64 )
       ARCH=amd64
       ;;
-    * ) echo "Unsupported systems!"
+    * ) echo "Unsupported systems!" && exit 1
   esac
 
   if [ ! -d "$WORK_DIR" ]; then
@@ -74,16 +105,34 @@ if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
   # 下载需要的应用
   [ ! -d data ] && mkdir data
 
-  # Caddy
-  if [ ! -f $WORK_DIR/caddy ]; then
-    # CADDY_LATEST=$(wget -qO- "${GH_PROXY}https://api.github.com/repos/caddyserver/caddy/releases/latest" | awk -F [v\"] '/"tag_name"/{print $5}' || echo '2.8.4')
-    CADDY_LATEST=$(curl -sSL "${GH_PROXY}https://api.github.com/repos/caddyserver/caddy/releases/latest" | awk -F [v\"] '/"tag_name"/{print $5}' || echo '2.8.4')
-    # wget -c ${GH_PROXY}https://github.com/caddyserver/caddy/releases/download/v${CADDY_LATEST}/caddy_${CADDY_LATEST}_linux_${ARCH}.tar.gz -qO- | tar xz -C $WORK_DIR caddy
-    curl -sSL "${GH_PROXY}https://github.com/caddyserver/caddy/releases/download/v${CADDY_LATEST}/caddy_${CADDY_LATEST}_linux_${ARCH}.tar.gz" | tar xz -C $WORK_DIR caddy
+  # 获取 GitHub 最新 release 版本号（通用 sed 解析，兼容 GNU/busybox）
+  get_latest_release() {
+    curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 \
+      "https://api.github.com/repos/$1/releases/latest" 2>/dev/null \
+      | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1
+  }
+
+  # Caddy（仅 ENABLE_ARGO=true 时需要）
+  if [ "${ENABLE_ARGO}" = "true" ] && [ ! -f $WORK_DIR/caddy ]; then
+    CADDY_LATEST=$(get_latest_release "caddyserver/caddy")
+    if [ -z "$CADDY_LATEST" ]; then
+      error "获取 caddy 最新版本失败，请检查网络后重试"
+    fi
+    CADDY_LATEST=${CADDY_LATEST#v}
+    curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 "${GH_PROXY}https://github.com/caddyserver/caddy/releases/download/v${CADDY_LATEST}/caddy_${CADDY_LATEST}_linux_${ARCH}.tar.gz" | tar xz -C $WORK_DIR caddy
+    chmod +x $WORK_DIR/caddy
   fi
 
-   GRPC_PROXY_RUN="$WORK_DIR/caddy run --config $WORK_DIR/Caddyfile --watch"
-   cat > $WORK_DIR/Caddyfile << EOF
+  if [ "${ENABLE_ARGO}" = "true" ]; then
+    GRPC_PROXY_RUN="$WORK_DIR/caddy run --config $WORK_DIR/Caddyfile"
+    cat > $WORK_DIR/Caddyfile << EOF
+{
+    admin off
+    log {
+        level ERROR
+    }
+}
+
 :$WEB_PORT {
     reverse_proxy /* 127.0.0.1:$GRPC_PORT
 }
@@ -93,24 +142,27 @@ if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
     tls $WORK_DIR/nezha.pem $WORK_DIR/nezha.key
 }
 EOF
+  fi
 
   if [ ! -f $WORK_DIR/dashboard ]; then
     if [ -n "${DASHBOARD_VERSION}" ]; then
       DASHBOARD_LATEST="${DASHBOARD_VERSION}"
     else
-      DASHBOARD_LATEST=$(curl -sSL "${GH_PROXY}https://api.github.com/repos/naiba/nezha/releases/latest" | awk -F '"' '/"tag_name"/{print $4}')
+      DASHBOARD_LATEST=$(get_latest_release "nezhahq/nezha")
     fi
-    # wget -O $WORK_DIR/dashboard.zip ${GH_PROXY}https://github.com/naiba/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip
-    curl -sSL ${GH_PROXY}https://github.com/naiba/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip -o $WORK_DIR/dashboard.zip
+    if [ -z "$DASHBOARD_LATEST" ]; then
+      error "获取 dashboard 最新版本失败，请检查网络后重试"
+    fi
+    curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 "${GH_PROXY}https://github.com/nezhahq/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip" -o $WORK_DIR/dashboard.zip
     unzip $WORK_DIR/dashboard.zip -d $WORK_DIR > /dev/null
     mv -f $WORK_DIR/dashboard-linux-$ARCH $WORK_DIR/dashboard
-    rm -rf $WORK_DIR/dashboard.zip
+    safe_rm "$WORK_DIR"/dashboard.zip
     chmod +x $WORK_DIR/dashboard
   fi
 
-  if [ ! -f $WORK_DIR/cloudflared ]; then
-    wget -qO cloudflared ${GH_PROXY}https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH
-    # curl -sSL ${GH_PROXY}https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH -o $WORK_DIR/cloudflared
+  # cloudflared（仅 ENABLE_ARGO=true 时需要）
+  if [ "${ENABLE_ARGO}" = "true" ] && [ ! -f $WORK_DIR/cloudflared ]; then
+    curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 "${GH_PROXY}https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH" -o $WORK_DIR/cloudflared
     chmod +x $WORK_DIR/cloudflared
   fi
 
@@ -118,13 +170,14 @@ EOF
     if [ -n "${AGENT_VERSION}" ]; then
       AGENT_LATEST="${AGENT_VERSION}"
     else
-      # AGENT_LATEST=$(wget -qO- "${GH_PROXY}https://api.github.com/repos/nezhahq/agent/releases/latest" | awk -F '"' '/"tag_name"/{print $4}')
-      AGENT_LATEST=$(curl -sSL "${GH_PROXY}https://api.github.com/repos/nezhahq/agent/releases/latest" | awk -F '"' '/"tag_name"/{print $4}')
+      AGENT_LATEST=$(get_latest_release "nezhahq/agent")
     fi
-    # wget -O $WORK_DIR/nezha-agent.zip https://github.com/nezhahq/agent/releases/download/$AGENT_LATEST/nezha-agent_linux_$ARCH.zip
-    curl -sSL ${GH_PROXY}https://github.com/nezhahq/agent/releases/download/$AGENT_LATEST/nezha-agent_linux_$ARCH.zip -o $WORK_DIR/nezha-agent.zip
+    if [ -z "$AGENT_LATEST" ]; then
+      error "获取 nezha-agent 最新版本失败，请检查网络后重试"
+    fi
+    curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 "${GH_PROXY}https://github.com/nezhahq/agent/releases/download/$AGENT_LATEST/nezha-agent_linux_$ARCH.zip" -o $WORK_DIR/nezha-agent.zip
     unzip $WORK_DIR/nezha-agent.zip -d $WORK_DIR > /dev/null
-    rm -rf $WORK_DIR/nezha-agent.zip
+    safe_rm "$WORK_DIR"/nezha-agent.zip
     chmod +x $WORK_DIR/nezha-agent
   fi
 
@@ -138,24 +191,34 @@ EOF
       ;;
   esac
 
+  # 直连时若未填 ARGO_DOMAIN，使用 MY_DOMAIN
+  if [ -n "$MY_DOMAIN" ] && [ -z "${ARGO_DOMAIN}" ]; then
+    export ARGO_DOMAIN="$MY_DOMAIN"
+  fi
+
   # 根据参数生成哪吒服务端配置文件
+  if [ "${ENABLE_ARGO}" = "true" ]; then
+    tls="true"
+  else
+    tls="false"
+  fi
   cat > ./data/config.yaml << EOF
-debug: false
-realipheader: ""
-language: zh-CN
-sitename: Nazha Probe
-user_template: user-dist
 admin_template: admin-dist
-jwt_secret_key: $jwtsecretkey
-jwt_timeout: 1
-agent_secret_key: $agentsecretkey
+agent_secret_key: $AGENT_KEY
 avg_ping_count: 2
 cover: 1
 https: {}
-listenport: $GRPC_PORT
-installhost: $ARGO_DOMAIN:$GRPC_PROXY_PORT
-tls: true
-location: Asia/Shanghai
+ip_change_notification_group_id: 0
+jwt_timeout: 1
+language: zh-CN
+listen_port: $GRPC_PORT
+install_host: $ARGO_DOMAIN:$GRPC_PROXY_PORT
+tls: $tls
+location: $TZ
+memory: {}
+site_name: "Nazha Probe"
+tsdb: {}
+user_template: user-dist
 oauth2:
   GitHub:
     clientid: "$GH_CLIENTID"
@@ -197,9 +260,10 @@ oauth2:
     userinfourl: "$CF_USERINFOURL"
     useridpath: "sub"
 EOF
+  chmod 600 ./data/config.yaml
 
   cat > $WORK_DIR/config.yml << EOF
-client_secret: $agentsecretkey
+client_secret: $AGENT_KEY
 debug: false
 disable_auto_update: false
 disable_command_execute: false
@@ -219,20 +283,22 @@ use_gitee_to_upgrade: false
 use_ipv6_country_code: false
 uuid: $UUID
 EOF
+  chmod 600 $WORK_DIR/config.yml
 
   # SSH path 与 GH_CLIENTSECRET 一样
   echo root:"$GH_CLIENTSECRET" | chpasswd root
   sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/g;s/^#\?PasswordAuthentication.*/PasswordAuthentication yes/g' /etc/ssh/sshd_config
   service ssh restart
 
-  # 判断 ARGO_AUTH 为 json 还是 token
-  # 如为 json 将生成 argo.json 和 argo.yml 文件
-  if [[ "$ARGO_AUTH" =~ TunnelSecret ]]; then
-    ARGO_RUN="$WORK_DIR/cloudflared --edge-ip-version auto --config $WORK_DIR/argo.yml run"
+  if [ "${ENABLE_ARGO}" = "true" ]; then
+    # 判断 ARGO_AUTH 为 json 还是 token
+    # 如为 json 将生成 argo.json 和 argo.yml 文件
+    if [[ "$ARGO_AUTH" =~ TunnelSecret ]]; then
+      ARGO_RUN="$WORK_DIR/cloudflared --edge-ip-version auto --config $WORK_DIR/argo.yml run"
 
-    echo "$ARGO_AUTH" > $WORK_DIR/argo.json
+      echo "$ARGO_AUTH" > $WORK_DIR/argo.json
 
-    cat > $WORK_DIR/argo.yml << EOF
+      cat > $WORK_DIR/argo.yml << EOF
 tunnel: $(cut -d '"' -f12 <<< "$ARGO_AUTH")
 credentials-file: $WORK_DIR/argo.json
 protocol: http2
@@ -252,15 +318,16 @@ ingress:
   - service: http_status:404
 EOF
 
-  # 如为 token 时
-  elif [[ "$ARGO_AUTH" =~ ^ey[A-Z0-9a-z=]{120,250}$ ]]; then
-    ARGO_RUN="$WORK_DIR/cloudflared tunnel --edge-ip-version auto --protocol http2 run --token ${ARGO_AUTH}"
-  fi
+    # 如为 token 时
+    elif [[ "$ARGO_AUTH" =~ ^ey[A-Z0-9a-z=]{120,250}$ ]]; then
+      ARGO_RUN="$WORK_DIR/cloudflared tunnel --edge-ip-version auto --protocol http2 run --token ${ARGO_AUTH}"
+    fi
 
-  # 生成自签署SSL证书
-  openssl genrsa -out $WORK_DIR/nezha.key 2048 > /dev/null 2>&1
-  openssl req -new -subj "/CN=$ARGO_DOMAIN" -key $WORK_DIR/nezha.key -out $WORK_DIR/nezha.csr > /dev/null 2>&1
-  openssl x509 -req -days 36500 -in $WORK_DIR/nezha.csr -signkey $WORK_DIR/nezha.key -out $WORK_DIR/nezha.pem > /dev/null 2>&1
+    # 生成自签署SSL证书
+    openssl genrsa -out $WORK_DIR/nezha.key 2048 > /dev/null 2>&1
+    openssl req -new -subj "/CN=$ARGO_DOMAIN" -key $WORK_DIR/nezha.key -out $WORK_DIR/nezha.csr > /dev/null 2>&1
+    openssl x509 -req -days 36500 -in $WORK_DIR/nezha.csr -signkey $WORK_DIR/nezha.key -out $WORK_DIR/nezha.pem > /dev/null 2>&1
+  fi
 
   # 生成 backup.sh 文件的步骤1 - 设置环境变量
   cat > $WORK_DIR/backup.sh << EOF
@@ -278,6 +345,7 @@ WORK_DIR=$WORK_DIR
 DAYS=5
 IS_DOCKER=1
 DASHBOARD_VERSION=$DASHBOARD_VERSION
+ENABLE_ARGO=$ENABLE_ARGO
 
 ########
 EOF
@@ -301,6 +369,7 @@ WORK_DIR=$WORK_DIR
 TEMP_DIR=/tmp/restore_temp
 NO_ACTION_FLAG=/tmp/flag
 IS_DOCKER=1
+ENABLE_ARGO=$ENABLE_ARGO
 
 ########
 EOF
@@ -331,12 +400,15 @@ EOF
   [ -s $WORK_DIR/restore.sh ] && ! grep -q "$WORK_DIR/restore.sh" /etc/crontab && echo "* * * * * root bash $WORK_DIR/restore.sh a" >> /etc/crontab
   service cron restart
 
-  # 生成 supervisor 进程守护配置文件
+  # 生成 supervisor 进程守护配置文件（ENABLE_ARGO=false 时不含 caddy/argo 进程）
   cat > /etc/supervisor/conf.d/damon.conf << EOF
 [supervisord]
 nodaemon=true
 logfile=/dev/null
 pidfile=/run/supervisord.pid
+EOF
+  if [ "${ENABLE_ARGO}" = "true" ]; then
+    cat >> /etc/supervisor/conf.d/damon.conf << EOF
 
 [program:grpcproxy]
 command=$GRPC_PROXY_RUN
@@ -344,6 +416,9 @@ autostart=true
 autorestart=true
 stderr_logfile=/dev/null
 stdout_logfile=/dev/null
+EOF
+  fi
+  cat >> /etc/supervisor/conf.d/damon.conf << EOF
 
 [program:nezha]
 command=$WORK_DIR/dashboard
@@ -358,6 +433,9 @@ autostart=true
 autorestart=true
 stderr_logfile=/dev/null
 stdout_logfile=/dev/null
+EOF
+  if [ "${ENABLE_ARGO}" = "true" ]; then
+    cat >> /etc/supervisor/conf.d/damon.conf << EOF
 
 [program:argo]
 command=$ARGO_RUN
@@ -366,6 +444,7 @@ autorestart=true
 stderr_logfile=/dev/null
 stdout_logfile=/dev/null
 EOF
+  fi
 
   # 赋执行权给 sh
   chmod +x $WORK_DIR/*.sh
