@@ -194,7 +194,7 @@ EOF
 
     # 压缩备份数据，只备份 data/ 目录下的 config.yaml 和 sqlite.db
     if [ -d /tmp/$GH_REPO ]; then
-      TIME=$(date "+%Y-%m-%d-%H:%M:%S")
+      TIME=$(date "+%Y-%m-%d-%H_%M_%S")
       echo "↓↓↓↓↓↓↓↓↓↓ dashboard-$TIME.tar.gz list ↓↓↓↓↓↓↓↓↓↓"
       tar czvf /tmp/$GH_REPO/dashboard-$TIME.tar.gz data/
       echo -e "↑↑↑↑↑↑↑↑↑↑ dashboard-$TIME.tar.gz list ↑↑↑↑↑↑↑↑↑↑\n\n"
