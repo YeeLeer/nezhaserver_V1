@@ -24,6 +24,9 @@ error() { echo -e "\033[31m\033[01m$*\033[0m" && exit 1; } # 红色
 info() { echo -e "\033[32m\033[01m$*\033[0m"; }   # 绿色
 hint() { echo -e "\033[33m\033[01m$*\033[0m"; }   # 黄色
 
+# 数据目录：默认 $WORK_DIR/data（容器版）；VPS 版生成脚本时写入 DATA_DIR=/data
+DATA_DIR=${DATA_DIR:-$WORK_DIR/data}
+
 cmd_systemctl() {
   local ENABLE_DISABLE=$1
   if [ "$ENABLE_DISABLE" = 'enable' ]; then
@@ -81,7 +84,8 @@ fi
 # 检测是否有设置备份数据
 if [[ -n "$GH_REPO" && -n "$GH_BACKUP_USER" && -n "$GH_EMAIL" && -n "$GH_PAT" ]]; then
   # IS_PRIVATE="$(wget -qO- --header="Authorization: token $GH_PAT" https://api.github.com/repos/$GH_BACKUP_USER/$GH_REPO | sed -n '/"private":/s/.*:[ ]*\([^,]*\),/\1/gp')"
-  IS_PRIVATE="$(curl -sSL --header "Authorization: token $GH_PAT" https://api.github.com/repos/$GH_BACKUP_USER/$GH_REPO | sed -n '/"private":/s/.*:[ ]*\([^,]*\),/\1/gp')"
+  # 真实 API 返回多字段 JSON，用固定格式提取 true/false，避免贪婪匹配误判私有仓库
+  IS_PRIVATE="$(curl -sSL --header "Authorization: token $GH_PAT" https://api.github.com/repos/$GH_BACKUP_USER/$GH_REPO | grep -oE '"private":[[:space:]]*(true|false)' | head -1 | grep -oE '(true|false)$')"
   if [ "$?" != 0 ]; then
     warning "\n Could not connect to Github. Stop backup. \n"
   elif [ "$IS_PRIVATE" != true ]; then
@@ -160,7 +164,7 @@ if [[ "${DASHBOARD_UPDATE}${CLOUDFLARED_UPDATE}${IS_BACKUP}${FORCE_UPDATE}" =~ t
 
     # 优化数据库，感谢 longsays 的脚本
     # 1. 导出数据
-    sqlite3 "data/sqlite.db" <<EOF
+    sqlite3 "$DATA_DIR/sqlite.db" <<EOF
 .output /tmp/tmp.sql
 .dump
 .quit
@@ -181,8 +185,8 @@ EOF
       echo "Data import failed!"
     else
       # 覆盖原库并优化
-      mv -f "/tmp/new.sqlite.db" "data/sqlite.db"
-      sqlite3 "data/sqlite.db" 'VACUUM;'
+      mv -f "/tmp/new.sqlite.db" "$DATA_DIR/sqlite.db"
+      sqlite3 "$DATA_DIR/sqlite.db" 'VACUUM;'
       [ $? -eq 0 ] && echo "Database migration and optimisation complete!" || echo "Database migration and optimisation failed!"
       # 清理临时文件
       rm -f /tmp/tmp.sql
@@ -192,11 +196,11 @@ EOF
     [ -d /tmp/$GH_REPO ] && rm -rf /tmp/$GH_REPO
     git clone https://$GH_PAT@github.com/$GH_BACKUP_USER/$GH_REPO.git --depth 1 --quiet /tmp/$GH_REPO
 
-    # 压缩备份数据，只备份 data/ 目录下的 config.yaml 和 sqlite.db
+    # 压缩备份数据，只备份 $DATA_DIR 目录下的 config.yaml 和 sqlite.db
     if [ -d /tmp/$GH_REPO ]; then
       TIME=$(date "+%Y-%m-%d-%H_%M_%S")
       echo "↓↓↓↓↓↓↓↓↓↓ dashboard-$TIME.tar.gz list ↓↓↓↓↓↓↓↓↓↓"
-      tar czvf /tmp/$GH_REPO/dashboard-$TIME.tar.gz data/
+      ( cd "$(dirname "$DATA_DIR")" && tar czvf /tmp/$GH_REPO/dashboard-$TIME.tar.gz "$(basename "$DATA_DIR")/" )
       echo -e "↑↑↑↑↑↑↑↑↑↑ dashboard-$TIME.tar.gz list ↑↑↑↑↑↑↑↑↑↑\n\n"
 
       # 更新备份 Github 库，删除 5 天前的备份

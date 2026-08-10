@@ -25,6 +25,9 @@ error() { echo -e "\033[31m\033[01m$*\033[0m" && exit 1; } # 红色
 info() { echo -e "\033[32m\033[01m$*\033[0m"; }   # 绿色
 hint() { echo -e "\033[33m\033[01m$*\033[0m"; }   # 黄色
 
+# 数据目录：默认 $WORK_DIR/data（容器版）；VPS 版生成脚本时写入 DATA_DIR=/data
+DATA_DIR=${DATA_DIR:-$WORK_DIR/data}
+
 cmd_systemctl() {
   local ENABLE_DISABLE=$1
   if [ "$ENABLE_DISABLE" = 'enable' ]; then
@@ -110,9 +113,13 @@ if [ -e $TEMP_DIR/backup.tar.gz ]; then
     hint "\n Stop Nezha-dashboard \n" && cmd_systemctl disable
   fi
 
-  # 解压缩备份文件到正式的工作文件夹
-  rm -rf ${WORK_DIR}/data/*
-  tar -xzvf $TEMP_DIR/backup.tar.gz -C ${WORK_DIR}
+  # 解压缩备份文件到正式的数据目录
+  if [ -n "${DATA_DIR}" ] && [ "${DATA_DIR}" != '/' ]; then
+    rm -rf "${DATA_DIR}"/*
+  else
+    error "\n DATA_DIR(${DATA_DIR}) 无效，中止还原 \n"
+  fi
+  tar -xzvf $TEMP_DIR/backup.tar.gz -C "$(dirname "${DATA_DIR}")"
   rm -rf ${TEMP_DIR}
 
   # 在本地记录还原文件名
