@@ -717,6 +717,14 @@ start_cron() {
   fi
 }
 
+# 拉取 template 脚本主体（去掉变量头），失败返回非0
+fetch_template_body() {
+  local name=$1 body
+  body=$(curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 "${GH_PROXY}https://raw.githubusercontent.com/YeeLeer/nezhaserver_V1/refs/heads/main/template/${name}.sh" 2>/dev/null | sed '1,/^########/d')
+  [ -n "$body" ] || return 1
+  printf '%s\n' "$body"
+}
+
 # 生成备份/还原/更新脚本（与容器版同一套模板，IS_DOCKER 为空时走 systemd/openrc 分支）
 gen_backup_restore_scripts() {
   [ -d "$FILE_PATH" ] || mkdir -p "$FILE_PATH"
@@ -739,10 +747,15 @@ IS_DOCKER=
 DASHBOARD_VERSION=$DASHBOARD_VERSION
 ENABLE_ARGO=$ENABLE_ARGO
 SYSTEM=$SYSTEM
+DATA_DIR=/data
 
 ########
 EOF
-  curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 "${GH_PROXY}https://raw.githubusercontent.com/YeeLeer/nezhaserver_V1/refs/heads/main/template/backup.sh" | sed '1,/^########/d' >> ${FILE_PATH}/backup.sh
+  if ! fetch_template_body backup >> ${FILE_PATH}/backup.sh; then
+    rm -f ${FILE_PATH}/backup.sh
+    red "获取 template/backup.sh 失败，请检查网络后重试"
+    return 1
+  fi
 
   if [[ -n "$GH_BACKUP_USER" && -n "$GH_EMAIL" && -n "$GH_REPO" && -n "$GH_PAT" ]]; then
     # restore.sh
@@ -761,10 +774,15 @@ NO_ACTION_FLAG=/tmp/flag
 IS_DOCKER=
 ENABLE_ARGO=$ENABLE_ARGO
 SYSTEM=$SYSTEM
+DATA_DIR=/data
 
 ########
 EOF
-    curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 "${GH_PROXY}https://raw.githubusercontent.com/YeeLeer/nezhaserver_V1/refs/heads/main/template/restore.sh" | sed '1,/^########/d' >> ${FILE_PATH}/restore.sh
+    if ! fetch_template_body restore >> ${FILE_PATH}/restore.sh; then
+      rm -f ${FILE_PATH}/restore.sh
+      red "获取 template/restore.sh 失败，请检查网络后重试"
+      return 1
+    fi
   fi
 
   # renew.sh
@@ -774,10 +792,15 @@ EOF
 GH_PROXY=$GH_PROXY
 WORK_DIR=$FILE_PATH
 TEMP_DIR=/tmp/renew
+DATA_DIR=/data
 
 ########
 EOF
-  curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 "${GH_PROXY}https://raw.githubusercontent.com/YeeLeer/nezhaserver_V1/refs/heads/main/template/renew.sh" | sed '1,/^########/d' >> ${FILE_PATH}/renew.sh
+  if ! fetch_template_body renew >> ${FILE_PATH}/renew.sh; then
+    rm -f ${FILE_PATH}/renew.sh
+    red "获取 template/renew.sh 失败，请检查网络后重试"
+    return 1
+  fi
 
   chmod +x ${FILE_PATH}/*.sh
 
@@ -892,6 +915,28 @@ update_dashboard_binary() {
   fi
 }
 
+# 一键备份数据库（推送 sqlite.db + config.yaml 至 GitHub 备份库）
+github_backup() {
+  if [ -z "$GH_PAT" ] || [ -z "$GH_REPO" ] || [ -z "$GH_BACKUP_USER" ] || [ -z "$GH_EMAIL" ]; then
+    red "未配置 GitHub 备份信息（GH_PAT/GH_REPO/GH_BACKUP_USER/GH_EMAIL），请先填写脚本顶部变量"
+    return 1
+  fi
+  gen_backup_restore_scripts || return 1
+  yellow "正在备份 /data 数据到 GitHub 备份库 ${GH_BACKUP_USER}/${GH_REPO} ..."
+  bash ${FILE_PATH}/backup.sh m
+}
+
+# 一键恢复数据库（从 GitHub 备份库拉取并覆盖 /data 数据）
+github_restore() {
+  if [ -z "$GH_PAT" ] || [ -z "$GH_REPO" ] || [ -z "$GH_BACKUP_USER" ]; then
+    red "未配置 GitHub 备份信息（GH_PAT/GH_REPO/GH_BACKUP_USER），请先填写脚本顶部变量"
+    return 1
+  fi
+  gen_backup_restore_scripts || return 1
+  red "注意：恢复会停止 dashboard 服务并覆盖 /data 目录下的 sqlite.db 与 config.yaml！"
+  bash ${FILE_PATH}/restore.sh
+}
+
 menu(){
 echo "1、安装哪吒服务器V1-VPS版"
 echo " "
@@ -901,9 +946,13 @@ echo "3、重启dashboard服务"
 echo " "
 echo "4、更新dashboard二进制文件"
 echo " "
+echo "5、一键备份数据库(推送至 GitHub)"
+echo " "
+echo "6、一键恢复数据库(从 GitHub 拉取)"
+echo " "
 echo "0、退出脚本"
 echo " "
-read -p " 请输入数字 [0-4]: " num
+read -p " 请输入数字 [0-6]: " num
 case "$num" in
     1)
     install_dashboard
@@ -917,12 +966,18 @@ case "$num" in
     4)
     update_dashboard_binary
     ;;
+    5)
+    github_backup
+    ;;
+    6)
+    github_restore
+    ;;
     0)
     exit 0
     ;;
     *)
     clear
-    red "请输入正确数字 [0-4]"
+    red "请输入正确数字 [0-6]"
     sleep 5
     menu
     ;;
