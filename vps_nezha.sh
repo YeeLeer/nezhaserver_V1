@@ -838,35 +838,56 @@ remove_dashboard() {
   fi
 }
 
-# reboot_dashboard
-reboot_dashboard() {
+# ---------- 停止所有服务(仅停止, 不取消开机自启, 不删配置) ----------
+stop_all_services() {
   if [ -f /etc/alpine-release ]; then
+    rc-service nezha-agent stop >/dev/null 2>&1 || true
     rc-service dashboard stop >/dev/null 2>&1 || true
-    pkill -TERM -f "${FILE_PATH}/dashboard" >/dev/null 2>&1 || true
-    sleep 1
-    pkill -KILL -f "${FILE_PATH}/dashboard" >/dev/null 2>&1 || true
-    rc-service dashboard start
+    rc-service argo stop >/dev/null 2>&1 || true
+    rc-service caddy stop >/dev/null 2>&1 || true
   else
+    systemctl stop nezha-agent 2>/dev/null || true
     systemctl stop dashboard 2>/dev/null || true
-    systemctl start dashboard
+    systemctl stop argo 2>/dev/null || true
+    systemctl stop caddy 2>/dev/null || true
   fi
+  green "所有服务已停止"
+}
+
+# ---------- 启动所有服务(先反代/隧道, 再面板, 最后 agent) ----------
+start_services() {
+  # 放行端口(防止重启后 iptables 规则丢失)
+  open_ports
+  if [ -f /etc/alpine-release ]; then
+    rc-service caddy start >/dev/null 2>&1 || true
+    rc-service argo start >/dev/null 2>&1 || true
+    sleep 2
+    rc-service dashboard start >/dev/null 2>&1 || true
+    sleep 2
+    rc-service nezha-agent start >/dev/null 2>&1 || true
+  else
+    systemctl start caddy 2>/dev/null || true
+    systemctl start argo 2>/dev/null || true
+    sleep 2
+    systemctl start dashboard 2>/dev/null || true
+    sleep 2
+    systemctl start nezha-agent 2>/dev/null || true
+  fi
+  green "所有服务已启动"
 }
 
 # update_dashboard_binary
 update_dashboard_binary() {
   yellow "正在更新 dashboard 二进制文件..."
 
-  # 1. 停止服务
-  if [ -f /etc/alpine-release ]; then
-    rc-service dashboard stop >/dev/null 2>&1 || true
-    pkill -TERM -f "${FILE_PATH}/dashboard" >/dev/null 2>&1 || true
-    sleep 1
-    pkill -KILL -f "${FILE_PATH}/dashboard" >/dev/null 2>&1 || true
-  else
-    systemctl stop dashboard >/dev/null 2>&1 || true
+  # 检查 dashboard 是否在运行, 运行中则提示先停止(避免替换运行中文件)
+  if pgrep -f "${FILE_PATH}/dashboard" >/dev/null 2>&1; then
+    red "dashboard 正在运行, 请先选 3 停止所有服务!"
+    red "否则替换运行中的二进制可能失败或导致状态不一致"
+    return 1
   fi
 
-  # 2. 备份旧文件
+  # 1. 备份旧文件
   if [ -f "${FILE_PATH}/dashboard" ]; then
     cp "${FILE_PATH}/dashboard" "${FILE_PATH}/dashboard.backup"
     green "已备份旧版本到: ${FILE_PATH}/dashboard.backup"
@@ -890,13 +911,7 @@ update_dashboard_binary() {
       mv "${FILE_PATH}/dashboard.backup" "${FILE_PATH}/dashboard"
       chmod +x "${FILE_PATH}/dashboard"
       yellow "已恢复旧版本"
-      # 恢复后重启服务
-      if [ -f /etc/alpine-release ]; then
-        rc-service dashboard start >/dev/null 2>&1 || true
-      else
-        systemctl start dashboard >/dev/null 2>&1 || true
-      fi
-      green "dashboard 服务已用旧版本重启"
+      yellow "旧版本未自动启动, 请自行选 5 启动服务"
     fi
   else
     unzip -o "${FILE_PATH}/dashboard.zip" -d "${FILE_PATH}" > /dev/null
@@ -904,14 +919,7 @@ update_dashboard_binary() {
     chmod +x "${FILE_PATH}/dashboard"
     safe_rm "${FILE_PATH}/dashboard.zip"
     green "更新成功"
-
-    # 4. 重启服务
-    if [ -f /etc/alpine-release ]; then
-      rc-service dashboard start
-    else
-      systemctl start dashboard
-    fi
-    green "dashboard 服务已重启"
+    yellow "dashboard 未自动启动, 请自行选 5 启动服务"
   fi
 }
 
@@ -942,17 +950,19 @@ echo "1、安装哪吒服务器V1-VPS版"
 echo " "
 echo "2、御载哪吒服务器V1-VPS版"
 echo " "
-echo "3、重启dashboard服务"
+echo "3、停止面板所有服务"
 echo " "
 echo "4、更新dashboard二进制文件"
 echo " "
-echo "5、一键备份数据库(推送至 GitHub)"
+echo "5、启动面板所有服务"
 echo " "
-echo "6、一键恢复数据库(从 GitHub 拉取)"
+echo "6、一键备份数据库(推送至 GitHub)"
+echo " "
+echo "7、一键恢复数据库(从 GitHub 拉取)"
 echo " "
 echo "0、退出脚本"
 echo " "
-read -p " 请输入数字 [0-6]: " num
+read -p " 请输入数字 [0-7]: " num
 case "$num" in
     1)
     install_dashboard
@@ -961,15 +971,18 @@ case "$num" in
     remove_dashboard
     ;;
     3)
-    reboot_dashboard
+    stop_all_services
     ;;
     4)
     update_dashboard_binary
     ;;
     5)
-    github_backup
+    start_services
     ;;
     6)
+    github_backup
+    ;;
+    7)
     github_restore
     ;;
     0)
@@ -977,7 +990,7 @@ case "$num" in
     ;;
     *)
     clear
-    red "请输入正确数字 [0-6]"
+    red "请输入正确数字 [0-7]"
     sleep 5
     menu
     ;;
