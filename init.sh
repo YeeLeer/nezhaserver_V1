@@ -68,7 +68,7 @@ if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
   }
 
   # 如参数不齐全，容器退出，另外处理某些环境变量填错后的处理
-  [[ -z "$GH_USER" || -z "$GH_CLIENTSECRET" ]] && error " There are variables that are not set. "
+  [[ -z "$GH_USER" || -z "$GH_CLIENTID" || -z "$GH_CLIENTSECRET" ]] && error " There are variables that are not set. "
   if [ "${ENABLE_ARGO}" = "true" ]; then
     [[ -z "$ARGO_AUTH" || -z "$ARGO_DOMAIN" ]] && error " ENABLE_ARGO=true 时 ARGO_AUTH 和 ARGO_DOMAIN 必须设置. "
   fi
