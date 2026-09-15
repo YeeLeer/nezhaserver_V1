@@ -100,13 +100,16 @@ if [[ "${DASHBOARD_UPDATE}${CLOUDFLARED_UPDATE}${IS_BACKUP}${FORCE_UPDATE}" =~ t
   # 更新面板主程序
   if [[ "${DASHBOARD_UPDATE}${FORCE_UPDATE}" =~ 'true' ]]; then
     hint "\n Renew dashboard to $DASHBOARD_LATEST \n"
+    # 注意: GitHub 永久最新版链接是 releases/latest/download/...（latest 在 download 之前）
+    # releases/download/latest/... 是 404，会导致更新永远失败
     if [ -n "${DASHBOARD_VERSION}" ]; then
-      DASHBOARD_LATEST="${DASHBOARD_VERSION}"
+      DASHBOARD_URL="${GH_PROXY}https://github.com/nezhahq/nezha/releases/download/${DASHBOARD_VERSION}/dashboard-linux-${ARCH}.zip"
     else
-      DASHBOARD_LATEST="latest"
+      DASHBOARD_URL="${GH_PROXY}https://github.com/nezhahq/nezha/releases/latest/download/dashboard-linux-${ARCH}.zip"
     fi
-    # wget -O $WORK_DIR/dashboard.zip ${GH_PROXY}https://github.com/nezhahq/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip
-    curl -sSL ${GH_PROXY}https://github.com/nezhahq/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip -o /tmp/dashboard.zip
+    # wget 备用下载方式（直接取消注释本行并注释下方 curl 行即可，$DASHBOARD_URL 已含正确地址）
+    # wget -O /tmp/dashboard.zip "$DASHBOARD_URL"
+    curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 "$DASHBOARD_URL" -o /tmp/dashboard.zip
     unzip -o /tmp/dashboard.zip -d /tmp
     chmod +x /tmp/dashboard-linux-$ARCH
     if [ -s /tmp/dashboard-linux-$ARCH ]; then
@@ -129,8 +132,10 @@ if [[ "${DASHBOARD_UPDATE}${CLOUDFLARED_UPDATE}${IS_BACKUP}${FORCE_UPDATE}" =~ t
   # 更新 cloudflared（ENABLE_ARGO=false 时跳过）
   if [ "${ENABLE_ARGO}" = "true" ] && [[ "${CLOUDFLARED_UPDATE}${FORCE_UPDATE}" =~ 'true' ]]; then
     hint "\n Renew Cloudflared to $CLOUDFLARED_LATEST \n"
+    # wget 备用下载方式（直接取消注释本行并注释下方 curl 行即可）
     # wget -O /tmp/cloudflared ${GH_PROXY}https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH && chmod +x /tmp/cloudflared
-    curl -sSL ${GH_PROXY}https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH -o /tmp/cloudflared
+    # -f 确保 HTTP 错误时不写入文件，避免 404 页面覆盖正常二进制
+    curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 ${GH_PROXY}https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH -o /tmp/cloudflared
     if [ -s /tmp/cloudflared ]; then
       info "\n Restart Argo \n"
       if [ "$IS_DOCKER" = 1 ]; then
