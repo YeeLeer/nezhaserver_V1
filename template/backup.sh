@@ -62,16 +62,23 @@ cmd_systemctl() {
 
 # 检查更新面板主程序 DASHBOARD 及 cloudflared
 if [[ -n "$DASHBOARD_VERSION" ]]; then
-  DASHBOARD_UPDATE=false
-elif [[ -n "$DASHBOARD_VERSION" || "$DASHBOARD_VERSION" =~ 0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
-  error "The DASHBOARD_VERSION variable should be in a format like v0.00.00, please check."
+  # 已固定版本：不自动更新。格式漏了 v 前缀时给告警（原来此分支写在 elif 里成了死代码，永远查不出来）
+  [[ "$DASHBOARD_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || warning "\n DASHBOARD_VERSION=$DASHBOARD_VERSION 格式应为 v0.00.00，已跳过自动更新。 \n"
   DASHBOARD_UPDATE=false
 else
   cd $WORK_DIR
   DASHBOARD_NOW=$(./dashboard -v)
-  # DASHBOARD_LATEST=$(wget -qO- https://api.github.com/repos/nezhahq/nezha/releases/latest | awk -F '"' '/tag_name/{print $4}')
-  DASHBOARD_LATEST=$(curl -sSL https://api.github.com/repos/nezhahq/nezha/releases/latest | awk -F '"' '/tag_name/{print $4}')
-  [ "v${DASHBOARD_NOW}" != "$DASHBOARD_LATEST" ] && DASHBOARD_UPDATE=true
+  # 归一化：dashboard -v 输出 2.3.12（不带 v），而 GitHub tag 是 v2.3.12，两边统一带 v 再比较
+  DASHBOARD_NOW=${DASHBOARD_NOW#v}
+  # DASHBOARD_LATEST=$(wget -qO- https://api.github.com/repos/nezhahq/nezha/releases/latest | awk -F '"' '/tag_name/{print $4; exit}')
+  DASHBOARD_LATEST=$(curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 https://api.github.com/repos/nezhahq/nezha/releases/latest 2>/dev/null | awk -F '"' '/tag_name/{print $4; exit}')
+  if [ -z "$DASHBOARD_LATEST" ]; then
+    # API 不可达/限流时不能把空值当成"已是最新"而静默跳过，否则会一直停留在旧版本且毫无痕迹
+    warning "\n Failed to get latest dashboard version from GitHub API, skip update (keep v$DASHBOARD_NOW). \n"
+    DASHBOARD_UPDATE=false
+  else
+    [ "v${DASHBOARD_NOW}" != "$DASHBOARD_LATEST" ] && DASHBOARD_UPDATE=true
+  fi
 fi
 
 if [ "${ENABLE_ARGO}" = "true" ]; then
