@@ -808,6 +808,11 @@ EOF
   [ -z "$NO_AUTO_RENEW" ] && [ -s ${FILE_PATH}/renew.sh ] && ! grep -q "${FILE_PATH}/renew.sh" /etc/crontab && echo "30 3 * * * root bash ${FILE_PATH}/renew.sh" >> /etc/crontab
   [ -s ${FILE_PATH}/backup.sh ] && ! grep -q "${FILE_PATH}/backup.sh" /etc/crontab && echo "0 4 * * * root bash ${FILE_PATH}/backup.sh a" >> /etc/crontab
   [ -s ${FILE_PATH}/restore.sh ] && ! grep -q "${FILE_PATH}/restore.sh" /etc/crontab && echo "* * * * * root bash ${FILE_PATH}/restore.sh a" >> /etc/crontab
+
+  # cron 未安装时定时任务不会执行（且不会有任何报错），这里显式告警
+  if ! command -v crond >/dev/null 2>&1 && ! command -v cron >/dev/null 2>&1; then
+    yellow "警告: 未检测到 cron/crond，定时备份与自动更新不会执行，请手动安装 cron(cronie) 后重跑本脚本"
+  fi
   start_cron
 }
 
@@ -904,8 +909,24 @@ update_dashboard_binary() {
     return 1
   fi
 
+  # 面板数据目录可能不在 FILE_PATH 下（旧安装方式为 /dashboard），给出明确提示避免"更新成功却没生效"
+  if [ ! -f "${FILE_PATH}/dashboard" ] && [ -f /dashboard/dashboard ]; then
+    red "注意: ${FILE_PATH}/dashboard 不存在，而 /dashboard/dashboard 存在，请把脚本顶部 FILE_PATH 改为 /dashboard 后重试"
+    return 1
+  fi
+
   yellow "下载最新版本: ${DASHBOARD_LATEST}..."
-  if ! curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 "${GH_PROXY}https://github.com/nezhahq/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip" -o "${FILE_PATH}/dashboard.zip"; then
+  # 固定版本用 tags 直链；跟随最新版必须用 releases/latest/download/...（latest 在 download 之前）
+  # 原写法 releases/download/$DASHBOARD_LATEST/... 在 $DASHBOARD_LATEST=latest 时是 404，会表现为"提示下载失败"
+  if [ -n "${DASHBOARD_VERSION}" ]; then
+    DASHBOARD_URL="${GH_PROXY}https://github.com/nezhahq/nezha/releases/download/${DASHBOARD_VERSION}/dashboard-linux-$ARCH.zip"
+  else
+    DASHBOARD_URL="${GH_PROXY}https://github.com/nezhahq/nezha/releases/latest/download/dashboard-linux-$ARCH.zip"
+  fi
+
+  # 清理上次残留，避免下载/解压失败时误用旧文件
+  rm -f "${FILE_PATH}/dashboard.zip" "${FILE_PATH}/dashboard-linux-$ARCH"
+  if ! curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 "$DASHBOARD_URL" -o "${FILE_PATH}/dashboard.zip"; then
     red "下载失败"
     if [ -f "${FILE_PATH}/dashboard.backup" ]; then
       mv "${FILE_PATH}/dashboard.backup" "${FILE_PATH}/dashboard"
@@ -914,12 +935,22 @@ update_dashboard_binary() {
       yellow "旧版本未自动启动, 请自行选 5 启动服务"
     fi
   else
-    unzip -o "${FILE_PATH}/dashboard.zip" -d "${FILE_PATH}" > /dev/null
-    mv -f "${FILE_PATH}/dashboard-linux-$ARCH" "${FILE_PATH}/dashboard"
-    chmod +x "${FILE_PATH}/dashboard"
-    safe_rm "${FILE_PATH}/dashboard.zip"
-    green "更新成功"
-    yellow "dashboard 未自动启动, 请自行选 5 启动服务"
+    unzip -o "${FILE_PATH}/dashboard.zip" -d "${FILE_PATH}" > /dev/null 2>&1
+    if [ -s "${FILE_PATH}/dashboard-linux-$ARCH" ]; then
+      mv -f "${FILE_PATH}/dashboard-linux-$ARCH" "${FILE_PATH}/dashboard"
+      chmod +x "${FILE_PATH}/dashboard"
+      safe_rm "${FILE_PATH}/dashboard.zip"
+      green "更新成功: ${DASHBOARD_LATEST}"
+      yellow "dashboard 未自动启动, 请自行选 5 启动服务"
+    else
+      red "解压失败或二进制不完整，保持原版本不变"
+      safe_rm "${FILE_PATH}/dashboard.zip"
+      if [ -f "${FILE_PATH}/dashboard.backup" ]; then
+        mv "${FILE_PATH}/dashboard.backup" "${FILE_PATH}/dashboard"
+        chmod +x "${FILE_PATH}/dashboard"
+        yellow "已恢复旧版本"
+      fi
+    fi
   fi
 }
 
