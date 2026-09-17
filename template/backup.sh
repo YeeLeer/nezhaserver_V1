@@ -17,7 +17,7 @@ DASHBOARD_VERSION=
 
 ########
 
-# version: 2025.08.08
+# version: 2025.09.17
 
 warning() { echo -e "\033[31m\033[01m$*\033[0m"; }  # 红色
 error() { echo -e "\033[31m\033[01m$*\033[0m" && exit 1; } # 红色
@@ -107,11 +107,13 @@ if [[ "${DASHBOARD_UPDATE}${CLOUDFLARED_UPDATE}${IS_BACKUP}${FORCE_UPDATE}" =~ t
     else
       DASHBOARD_URL="${GH_PROXY}https://github.com/nezhahq/nezha/releases/latest/download/dashboard-linux-${ARCH}.zip"
     fi
+    # 先清理上次残留的临时文件，避免下载失败时误用旧文件/残留二进制
+    rm -f /tmp/dashboard.zip "/tmp/dashboard-linux-$ARCH"
     # wget 备用下载方式（直接取消注释本行并注释下方 curl 行即可，$DASHBOARD_URL 已含正确地址）
     # wget -O /tmp/dashboard.zip "$DASHBOARD_URL"
     curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 "$DASHBOARD_URL" -o /tmp/dashboard.zip
-    unzip -o /tmp/dashboard.zip -d /tmp
-    chmod +x /tmp/dashboard-linux-$ARCH
+    [ -s /tmp/dashboard.zip ] && unzip -o /tmp/dashboard.zip -d /tmp >/dev/null
+    [ -s /tmp/dashboard-linux-$ARCH ] && chmod +x /tmp/dashboard-linux-$ARCH
     if [ -s /tmp/dashboard-linux-$ARCH ]; then
       info "\n Restart Nezha Dashboard \n"
       if [ "$IS_DOCKER" = 1 ]; then
@@ -125,6 +127,8 @@ if [[ "${DASHBOARD_UPDATE}${CLOUDFLARED_UPDATE}${IS_BACKUP}${FORCE_UPDATE}" =~ t
         mv -f /tmp/dashboard-linux-$ARCH $WORK_DIR/dashboard
         cmd_systemctl enable >/dev/null 2>&1
       fi
+    else
+      warning "\n Failed to renew dashboard (download or unzip error), keep current version v$DASHBOARD_NOW. \n"
     fi
     rm -rf /tmp/dist /tmp/dashboard.zip
   fi
@@ -135,6 +139,7 @@ if [[ "${DASHBOARD_UPDATE}${CLOUDFLARED_UPDATE}${IS_BACKUP}${FORCE_UPDATE}" =~ t
     # wget 备用下载方式（直接取消注释本行并注释下方 curl 行即可）
     # wget -O /tmp/cloudflared ${GH_PROXY}https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH && chmod +x /tmp/cloudflared
     # -f 确保 HTTP 错误时不写入文件，避免 404 页面覆盖正常二进制
+    rm -f /tmp/cloudflared
     curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 ${GH_PROXY}https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH -o /tmp/cloudflared
     if [ -s /tmp/cloudflared ]; then
       info "\n Restart Argo \n"
@@ -147,6 +152,8 @@ if [[ "${DASHBOARD_UPDATE}${CLOUDFLARED_UPDATE}${IS_BACKUP}${FORCE_UPDATE}" =~ t
         mv -f /tmp/cloudflared $WORK_DIR/
         cmd_systemctl enable >/dev/null 2>&1
       fi
+    else
+      warning "\n Failed to renew cloudflared, keep current version $CLOUDFLARED_NOW. \n"
     fi
   fi
 
