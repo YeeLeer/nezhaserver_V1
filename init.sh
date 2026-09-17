@@ -394,11 +394,12 @@ EOF
   # wget -qO- ${GH_PROXY}https://raw.githubusercontent.com/YeeLeer/nezhaserver_V1/refs/heads/main/template/renew.sh | sed '1,/^########/d' >> $WORK_DIR/renew.sh
   curl -sSL ${GH_PROXY}https://raw.githubusercontent.com/YeeLeer/nezhaserver_V1/refs/heads/main/template/renew.sh | sed '1,/^########/d' >> $WORK_DIR/renew.sh
 
-  # 生成定时任务: 1.每天北京时间 3:30:00 更新备份和还原文件，2.每天北京时间 4:00:00 备份一次，并重启 cron 服务； 3.每分钟自动检测在线备份文件里的内容
+  # 生成定时任务: 1.每天北京时间 3:30:00 更新备份和还原文件，2.每天北京时间 4:00:00 备份一次； 3.每分钟自动检测在线备份文件里的内容
   [ -z "$NO_AUTO_RENEW" ] && [ -s $WORK_DIR/renew.sh ] && ! grep -q "$WORK_DIR/renew.sh" /etc/crontab && echo "30 3 * * * root bash $WORK_DIR/renew.sh" >> /etc/crontab
   [ -s $WORK_DIR/backup.sh ] && ! grep -q "$WORK_DIR/backup.sh" /etc/crontab && echo "0 4 * * * root bash $WORK_DIR/backup.sh a" >> /etc/crontab
   [ -s $WORK_DIR/restore.sh ] && ! grep -q "$WORK_DIR/restore.sh" /etc/crontab && echo "* * * * * root bash $WORK_DIR/restore.sh a" >> /etc/crontab
-  service cron restart
+  # 脚本必须完整生成（含 ######## 之后的正文），否则定时更新/备份形同虚设，这里显式告警
+  [ -s $WORK_DIR/backup.sh ] && grep -q "^########" $WORK_DIR/backup.sh || hint " 警告: $WORK_DIR/backup.sh 未完整生成，定时更新/备份不会生效（检查 raw.githubusercontent.com 是否可访问或设置 GH_PROXY）"
 
   # 生成 supervisor 进程守护配置文件（ENABLE_ARGO=false 时不含 caddy/argo 进程）
   cat > /etc/supervisor/conf.d/damon.conf << EOF
@@ -449,6 +450,9 @@ EOF
   # 赋执行权给 sh
   chmod +x $WORK_DIR/*.sh
 fi
+
+# 每次容器启动都确保 cron 在运行：cron 不在 supervisor 管理范围内，容器重启后会消失，导致定时备份/更新任务全部失效
+service cron start >/dev/null 2>&1 || service cron restart >/dev/null 2>&1
 
 # 运行 supervisor 进程守护
 supervisord -c /etc/supervisor/supervisord.conf
