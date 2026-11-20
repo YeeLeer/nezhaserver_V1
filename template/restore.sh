@@ -14,7 +14,7 @@ IS_DOCKER=
 
 ########
 
-# version: 2025.08.08
+# version: 2026.11.21
 
 trap "rm -rf $TEMP_DIR; echo -e '\n' ;exit" INT QUIT TERM EXIT
 
@@ -100,9 +100,14 @@ fi
 
 DOWNLOAD_URL=https://raw.githubusercontent.com/$GH_BACKUP_USER/$GH_REPO/main/$FILE
 # wget --header="Authorization: token $GH_PAT" --header='Accept: application/vnd.github.v3.raw' -O $TEMP_DIR/backup.tar.gz ${GH_PROXY}${DOWNLOAD_URL}
-curl -sSL --header "Authorization: token $GH_PAT" --header "Accept: application/vnd.github.v3.raw" -o "$TEMP_DIR/backup.tar.gz" "${GH_PROXY}${DOWNLOAD_URL}"
+# -f：HTTP 404/500 时直接失败，避免把错误页面当成备份文件写进 backup.tar.gz 再拿去解包
+if ! curl -fsSL --header "Authorization: token $GH_PAT" --header "Accept: application/vnd.github.v3.raw" -o "$TEMP_DIR/backup.tar.gz" "${GH_PROXY}${DOWNLOAD_URL}"; then
+  warning "\n Failed to download backup file! \n"
+  rm -rf ${TEMP_DIR}
+  exit 1
+fi
 
-if [ -e $TEMP_DIR/backup.tar.gz ]; then
+if [ -s "$TEMP_DIR/backup.tar.gz" ]; then
   if [ "$IS_DOCKER" = 1 ]; then
     if [ "${ENABLE_ARGO}" = "true" ]; then
       hint "\n$(supervisorctl stop agent nezha grpcproxy)\n"
@@ -114,12 +119,61 @@ if [ -e $TEMP_DIR/backup.tar.gz ]; then
   fi
 
   # 解压缩备份文件到正式的数据目录
-  if [ -n "${DATA_DIR}" ] && [ "${DATA_DIR}" != '/' ]; then
-    rm -rf "${DATA_DIR}"/*
-  else
+  if [ -z "${DATA_DIR}" ] || [ "${DATA_DIR}" = '/' ]; then
     error "\n DATA_DIR(${DATA_DIR}) 无效，中止还原 \n"
   fi
-  tar -xzvf $TEMP_DIR/backup.tar.gz -C "$(dirname "${DATA_DIR}")"
+
+  # 解包前先把现有数据整体挪走：解包失败时原样搬回来，避免"目录已被清空 + 解包失败"导致数据丢失
+  # 优先 rename（同文件系统最快）；DATA_DIR 是独立挂载点时 rename 会失败，退化为先复制再清空
+  OLD_DATA_DIR="${DATA_DIR}.restore_old.$$"
+  DATA_STASHED=false
+  PREP_OK=true
+  if [ -d "$DATA_DIR" ]; then
+    rm -rf "$OLD_DATA_DIR"
+    if mv "$DATA_DIR" "$OLD_DATA_DIR" 2>/dev/null; then
+      DATA_STASHED=true
+    elif cp -a "$DATA_DIR" "$OLD_DATA_DIR"; then
+      DATA_STASHED=true
+      find "$DATA_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+    else
+      rm -rf "$OLD_DATA_DIR"
+      PREP_OK=false
+      warning "\n Failed to stash the current data, abort restore without touching it. \n"
+    fi
+  fi
+  mkdir -p "$DATA_DIR"
+
+  # 打包端用 libarchive/bsdtar 时，包里会带 LIBARCHIVE.xattr.* 扩展头，GNU tar 解包只提示
+  # "Ignoring unknown extended header keyword"，不影响解包；这里静音，busybox/bsdtar 不支持该参数时自动跳过
+  TAR_WARN_OPT=
+  tar --warning=no-unknown-keyword --version >/dev/null 2>&1 && TAR_WARN_OPT=--warning=no-unknown-keyword
+
+  RESTORE_OK=false
+  if [ "$PREP_OK" = true ] && tar $TAR_WARN_OPT -xzvf "$TEMP_DIR/backup.tar.gz" -C "$(dirname "${DATA_DIR}")"; then
+    # 备份包里一定有 data/config.yaml 和 data/sqlite.db，两者都没有说明包结构不对，按失败处理
+    { [ -f "$DATA_DIR/config.yaml" ] || [ -s "$DATA_DIR/sqlite.db" ]; } && RESTORE_OK=true
+  fi
+
+  if [ "$RESTORE_OK" != true ]; then
+    warning "\n Restore failed, rolling back to the previous data ... \n"
+    if [ "$DATA_STASHED" = true ]; then
+      rm -rf "$DATA_DIR"
+      [ -d "$OLD_DATA_DIR" ] && mv "$OLD_DATA_DIR" "$DATA_DIR"
+    fi
+    # 回滚后把服务重新拉起来，别让面板停在停止状态
+    if [ "$IS_DOCKER" = 1 ]; then
+      if [ "${ENABLE_ARGO}" = "true" ]; then
+        supervisorctl start agent nezha grpcproxy >/dev/null 2>&1
+      else
+        supervisorctl start agent nezha >/dev/null 2>&1
+      fi
+    else
+      cmd_systemctl enable >/dev/null 2>&1
+    fi
+    rm -rf ${TEMP_DIR}
+    error "\n Restore failed, the previous data has been kept. Check the backup file and try again. \n"
+  fi
+  rm -rf "$OLD_DATA_DIR"
   rm -rf ${TEMP_DIR}
 
   # 在本地记录还原文件名
